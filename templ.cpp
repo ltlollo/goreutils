@@ -1,9 +1,9 @@
 // gpp self
 
-#include <string>
+#include <err.h>
 #include <iostream>
 #include <stdio.h>
-#include <err.h>
+#include <string>
 
 /*
  * Tiny templating program
@@ -19,10 +19,11 @@
  * #print(date.today())
  */
 
-int main(int argc, char *argv[]) {
+int
+main(int argc, char *argv[]) {
     FILE *exec;
     std::string cmd, in, env;
-    char quot = (argc-1) ? argv[1][0] : '#';
+    char quot = (argc - 1) ? argv[1][0] : '#';
     auto call_once = [&]() {
         if (env.empty()) {
             return;
@@ -47,9 +48,9 @@ int main(int argc, char *argv[]) {
             printf("%s\n", in.c_str());
         } else {
             if (env.empty()) {
-                env = std::string(in.data()+1);
+                env = std::string(in.data() + 1);
             } else {
-                cmd += std::string(in.data()+1) + '\n';
+                cmd += std::string(in.data() + 1) + '\n';
             }
         }
     }

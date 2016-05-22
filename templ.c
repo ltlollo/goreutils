@@ -1,8 +1,8 @@
+#include <err.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
-#include <err.h>
+#include <unistd.h>
 
 extern char *__progname;
 
@@ -19,7 +19,7 @@ main(int argc, char *argv[]) {
     int opt;
     int ret;
     while ((opt = getopt(argc, argv, "hq:i:o:")) != -1) {
-        switch(opt) {
+        switch (opt) {
         case 'i':
             if (freopen(optarg, "r", stdin) == NULL) {
                 err(1, "freopen");
@@ -37,25 +37,27 @@ main(int argc, char *argv[]) {
                 quot = *optarg;
             }
             break;
-        case 'h': usage();
+        case 'h':
+            usage();
             return 0;
         }
     }
     while ((read = getline(&line, &len, stdin)) != -1) {
         if (read != 0 && line[0] == quot) {
             if (exec == NULL) {
-                if ((exec = popen(line+1, "w")) == NULL) {
+                if ((exec = popen(line + 1, "w")) == NULL) {
                     goto FAIL;
                 }
             } else {
-                fprintf(exec, "%s", line+1);
+                fprintf(exec, "%s", line + 1);
             }
         } else {
             if (exec != NULL) {
                 if ((ret = pclose(exec)) == -1) {
                     goto FAIL;
                 } else if (ret != 0) {
-                    warnx("Warn - line %ld: %sstatus: %d\n", lineno, line, ret);
+                    warnx("Warn - line %ld: %sstatus: %d\n", lineno, line,
+                          ret);
                 }
                 exec = NULL;
             }
@@ -79,10 +81,11 @@ FAIL:
 void
 usage(void) {
     fprintf(stderr, "Usage:\t%s [-q Q][-o out][-i in][-h]"
-                "\nScope:\ttiny templating program: executes `Q` starting "
-                "\n\tblocks `Q CMD; (Q REST)...` as in `CMD` <<< `REST`..."
-                "\n\t-i in<string>: input file (default: stdin)"
-                "\n\t-o out<string>: output file (default: stdout)"
-                "\n\t-q Q<byte>: quotation symbol (default: '#')"
-                "\n\t-h: this message\n", __progname);
+                    "\nScope:\ttiny templating program: executes `Q` starting "
+                    "\n\tblocks `Q CMD; (Q REST)...` as in `CMD` <<< `REST`..."
+                    "\n\t-i in<string>: input file (default: stdin)"
+                    "\n\t-o out<string>: output file (default: stdout)"
+                    "\n\t-q Q<byte>: quotation symbol (default: '#')"
+                    "\n\t-h: this message\n",
+            __progname);
 }

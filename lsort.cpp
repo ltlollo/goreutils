@@ -1,14 +1,15 @@
 // gpp self
 
-#include <vector>
-#include <string>
-#include <iostream>
 #include <algorithm>
+#include <iostream>
 #include <iterator>
+#include <string>
+#include <vector>
 
 using namespace std;
 
-int main() {
+int
+main() {
     cin.sync_with_stdio(false);
     vector<string> vd{};
     string s;
@@ -16,10 +17,10 @@ int main() {
     while (getline(cin, s)) {
         vd.emplace_back(move(s));
     }
-    sort(begin(vd), end(vd), [](const auto& f, const auto& s) noexcept {
+    sort(begin(vd), end(vd), [](const auto &f, const auto &s) noexcept {
         return f.size() > s.size();
     });
-    for (const auto& it: vd) {
+    for (const auto &it : vd) {
         cout << it << '\n';
     }
     return 0;

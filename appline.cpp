@@ -17,7 +17,8 @@ extern char *__progname;
 
 static void usage();
 
-int main(int argc, char *argv[]) {
+int
+main(int argc, char *argv[]) {
     if (argc - 1 < 2 || argc - 1 > 3) {
         usage();
         errx(1, "wrong number of arguments");
@@ -26,8 +27,8 @@ int main(int argc, char *argv[]) {
     auto var = std::string(argv[1]);
     auto sub = std::string(argv[2]);
     if (cont && std::string(argv[3]) != "-c") {
-            usage();
-            errx(1, "unrecognised flag");
+        usage();
+        errx(1, "unrecognised flag");
     }
     auto it = std::begin(sub);
     std::vector<decltype(it)> vars;
