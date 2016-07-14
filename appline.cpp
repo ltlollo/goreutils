@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <iostream>
 #include <string>
+#include <vector>
 
 using namespace std;
 
@@ -22,26 +23,31 @@ int main(int argc, char *argv[]) {
         errx(1, "wrong number of arguments");
     }
     bool cont = argc - 1 == 3;
-    auto arg1 = std::string(argv[1]);
-    auto arg2 = std::string(argv[2]);
-    if (argc - 1 == 3) {
-        auto arg3 = std::string(argv[3]);
-        if (arg3 != "-c") {
+    auto var = std::string(argv[1]);
+    auto sub = std::string(argv[2]);
+    if (cont && std::string(argv[3]) != "-c") {
             usage();
             errx(1, "unrecognised flag");
-        }
     }
-    auto it = std::search(std::begin(arg2), std::end(arg2), std::begin(arg1),
-                          std::end(arg1));
-    if (it == std::end(arg2)) {
-        usage();
+    auto it = std::begin(sub);
+    std::vector<decltype(it)> vars;
+    while ((it = std::search(it, std::end(sub), std::begin(var),
+                             std::end(var))) != std::end(sub)) {
+        vars.push_back(it);
+        it += var.size();
+    }
+    if (vars.empty()) {
         errx(1, "var not in cmd");
     }
-    auto fc = std::string(std::begin(arg2), it),
-         sc = std::string(it + arg1.size(), std::end(arg2));
     int ret;
-    for (std::string s, cmd; std::getline(std::cin, s);) {
-        cmd = fc + s + sc;
+    for (std::string s, cmd = sub; std::getline(std::cin, s);) {
+        cmd.resize(0);
+        it = std::begin(sub);
+        for (const auto &et : vars) {
+            cmd += std::string(it, et) + s;
+            it = et + var.size();
+        }
+        cmd += std::string(it, std::end(sub));
         if ((ret = system(cmd.c_str())) != 0 && !cont) {
             errx(ret, "%s", cmd.c_str());
         }
