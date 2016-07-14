@@ -38,9 +38,9 @@ int main(int argc, char *argv[]) {
         errx(1, "var not in cmd");
     }
     auto fc = std::string(std::begin(arg2), it),
-         sc = std::string(it + arg1.size(), std::end(arg2)), cmd = fc;
+         sc = std::string(it + arg1.size(), std::end(arg2));
     int ret;
-    for (std::string s; std::getline(std::cin, s);) {
+    for (std::string s, cmd; std::getline(std::cin, s);) {
         cmd = fc + s + sc;
         if ((ret = system(cmd.c_str())) != 0 && !cont) {
             errx(ret, "%s", cmd.c_str());
