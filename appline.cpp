@@ -37,6 +37,7 @@ int main(int argc, char *argv[]) {
         it += var.size();
     }
     if (vars.empty()) {
+        usage();
         errx(1, "var not in cmd");
     }
     int ret;
