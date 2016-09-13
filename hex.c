@@ -1,4 +1,4 @@
-// gcc self -mmusl $cflags -lglut -lGL -lGLU
+// gcc self $cflags -lglut -lGL -lGLU -o hex
 
 #include <err.h>
 #include <fcntl.h>
@@ -43,7 +43,7 @@ static unsigned char choff = 0;
 static GLuint vs, fs, sp, vao, vbo[2];
 static vec2 vrx[MXLINES * 96];
 static vec3 col[MXLINES * 96];
-static constexpr int xoff = 5, yoff = 20;
+static constexpr int xoff = 5, yoff = 13;
 static constexpr int hfont = 13, unused_attr wfont = 8;
 static constexpr float nch = cxlen(MODEL) + 2 * 16;
 static float ix = cxlen(MODEL) + 16, iy;
@@ -107,8 +107,8 @@ resize(int width, int height) {
     winx = width;
     winy = height;
     nlines = winy / hfont;
-    iy = 2.0f / (float)nlines;
-    if (nlines > MXLINES) {
+    iy = 2.0f / (float)(nlines - 3);
+    if (nlines > MXLINES || nlines < 4) {
         errx(1, "too many lines");
     }
     nvx = nlines * 96;
@@ -344,11 +344,11 @@ main(int argc, char *argv[]) {
     winx = glutGet(GLUT_SCREEN_WIDTH);
 
     nlines = winy / hfont;
-    if (nlines > MXLINES) {
+    if (nlines > MXLINES || nlines < 4) {
         errx(1, "too many lines");
     }
     nvx = nlines * 96;
-    iy = 2.0f / (float)nlines;
+    iy = 2.0f / (float)(nlines - 3);
 
     set_vrx_table();
     glGenVertexArrays(1, &vao);
@@ -386,6 +386,7 @@ main(int argc, char *argv[]) {
 
     glutReshapeFunc(resize);
     glutDisplayFunc(display);
+    display();
     glutKeyboardFunc(key_ascii);
     glutSpecialFunc(key_nav);
     glutMainLoop();
