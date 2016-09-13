@@ -203,8 +203,8 @@ display(void) {
     int i = 0;
     for (; i < nlines && slice < end; ++i, slice += 16) {
         for (int j = 0; j < 16; ++j) {
-            float bc = (slice[j] >> 7);
-            float rc = (slice[j] >> 5) & 3;
+            float rc = (slice[j] >> 6);
+            float bc = (slice[j] >> 5) & 1;
             float gc = (slice[j] >> 0) & 31;
             size_t o = j * 6 + i * 96;
             set_vec3(&col[0 + o], rc / 3.f, gc / 31.f, bc / 2.f);
