@@ -35,6 +35,7 @@
 typedef struct { float x, y; } vec2;
 typedef struct { float x, y, z; } vec3;
 
+static const char* fname;
 static void *font = GLUT_BITMAP_8_BY_13;
 static int winy, winx, nlines;
 static unsigned char *beg, *end, *curs;
@@ -43,9 +44,10 @@ static unsigned char choff = 0;
 static GLuint vs, fs, sp, vao, vbo[2];
 static vec2 vrx[MXLINES * 96];
 static vec3 col[MXLINES * 96];
-static constexpr int xoff = 5, yoff = 13;
+static constexpr int xoff = 5, yoff = 13 * 2;
 static constexpr int hfont = 13, unused_attr wfont = 8;
 static constexpr float nch = cxlen(MODEL) + 2 * 16;
+static constexpr float bg[3] = { 0.1, 0.1, 0.1 };
 static float ix = cxlen(MODEL) + 16, iy;
 static constexpr char *vsh = "\n#version 130"
                              "\nin vec2 inpos;"
@@ -70,14 +72,17 @@ static inline void set_vec3(vec3 *, float, float, float);
 static void resize(int, int);
 static void setOrthographicProjection(void);
 static void resetPerspectiveProjection(void);
-static void draw_str(float, float, unsigned char *, size_t);
+static void draw_arr(float, float, unsigned char *, size_t);
+static void draw_cstr(float, float, char *);
 static unsigned char to_hex(unsigned char c);
 static unsigned char *format_buf(unsigned char *, unsigned char *);
 static void check_shader(GLuint);
 static void key_nav(int k, int, int);
 static void key_ascii(unsigned char, int, int);
 static void set_vrx_table(void);
+static void set_col_table(unsigned char*);
 static void display(void);
+static void display_info(unsigned char charoff);
 
 static inline float
 nx(float f) {
@@ -106,7 +111,7 @@ resize(int width, int height) {
     const float ar = (float)width / (float)height;
     winx = width;
     winy = height;
-    nlines = winy / hfont;
+    nlines = winy / hfont - 1;
     iy = 2.0f / (float)(nlines - 3);
     if (nlines > MXLINES || nlines < 4) {
         errx(1, "too many lines");
@@ -139,12 +144,21 @@ resetPerspectiveProjection(void) {
 }
 
 static void
-draw_str(float x, float y, unsigned char *str, size_t size) {
+draw_arr(float x, float y, unsigned char *str, size_t size) {
     glRasterPos2f(x, y);
     for (size_t i = 0; i < size; ++i) {
         glutBitmapCharacter(font, str[i]);
     }
 }
+
+static void
+draw_cstr(float x, float y, char *str) {
+    glRasterPos2f(x, y);
+    while (*str) {
+        glutBitmapCharacter(font, *str++);
+    }
+}
+
 
 static unsigned char
 to_hex(unsigned char c) {
@@ -174,7 +188,7 @@ format_buf(unsigned char *cur, unsigned char *buf) {
             *buf++ = ' ';
             cur++;
         }
-        *buf++ = '|';
+        *buf++ = '\x19';
         *buf++ = ' ';
     }
     return buf;
@@ -196,36 +210,19 @@ check_shader(GLuint shader) {
     }
 }
 
+static void display_info(unsigned char charoff) {
+    static char buf[256] = { 0 };
+    snprintf(buf, 256, "choff: %03d, filename: %s", charoff, fname);
+    draw_cstr(xoff, yoff/2, buf);
+}
+
 static void
 display(void) {
     static unsigned char buf[cxlen(MODEL) + 16] = { 0 };
     unsigned char *curr = access(curs), *slice = curr;
-    int i = 0;
-    for (; i < nlines && slice < end; ++i, slice += 16) {
-        for (int j = 0; j < 16; ++j) {
-            float rc = (slice[j] >> 6);
-            float bc = (slice[j] >> 5) & 1;
-            float gc = (slice[j] >> 0) & 31;
-            size_t o = j * 6 + i * 96;
-            set_vec3(&col[0 + o], rc / 3.f, gc / 31.f, bc / 2.f);
-            set_vec3(&col[1 + o], rc / 3.f, gc / 31.f, bc / 2.f);
-            set_vec3(&col[2 + o], rc / 3.f, gc / 31.f, bc / 2.f);
-            set_vec3(&col[3 + o], rc / 3.f, gc / 31.f, bc / 2.f);
-            set_vec3(&col[4 + o], rc / 3.f, gc / 31.f, bc / 2.f);
-            set_vec3(&col[5 + o], rc / 3.f, gc / 31.f, bc / 2.f);
-        }
-    }
-    for (; i < nlines; ++i) {
-        for (int j = 0; j < 16; ++j) {
-            size_t o = j * 6 + i * 96;
-            set_vec3(&col[0 + o], .0f, .0f, .0f);
-            set_vec3(&col[1 + o], .0f, .0f, .0f);
-            set_vec3(&col[2 + o], .0f, .0f, .0f);
-            set_vec3(&col[3 + o], .0f, .0f, .0f);
-            set_vec3(&col[4 + o], .0f, .0f, .0f);
-            set_vec3(&col[5 + o], .0f, .0f, .0f);
-        }
-    }
+    unsigned char charoff = access(choff);
+
+    set_col_table(slice);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vec3) * nvx, col, GL_STREAM_DRAW);
     glClear(GL_COLOR_BUFFER_BIT);
     glColor3d(0.7, 0.8, 0.6);
@@ -233,16 +230,17 @@ display(void) {
     glPushMatrix();
     glLoadIdentity();
 
+    display_info(charoff);
     for (int i = 0, y = yoff; i < nlines && curr < end;
          ++i, y += hfont, curr += 16) {
         unsigned char *strend = format_buf(curr, buf);
         size_t rest = min(end - curr, 16);
         memcpy(strend, curr, rest);
-        unsigned char charoff = access(choff);
+
         for (int j = 0; j < 16; ++j) {
             strend[j] += charoff;
         }
-        draw_str(xoff, y, buf, cxlen(MODEL) + rest);
+        draw_arr(xoff, y, buf, cxlen(MODEL) + rest);
     }
     glPopMatrix();
     glDrawArrays(GL_TRIANGLES, 0, 96 * nch);
@@ -302,16 +300,47 @@ key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
 }
 
 static void
+set_col_table(unsigned char *slice) {
+    int i = 0;
+    for (; i < nlines && slice < end; ++i, slice += 16) {
+        for (int j = 0; j < 16; ++j) {
+            float rc = (slice[j] >> 6);
+            float bc = (slice[j] >> 5) & 1;
+            float gc = (slice[j] >> 0) & 31;
+            size_t o = j * 6 + i * 96;
+            set_vec3(&col[0 + o], rc / 3.f, gc / 31.f, bc / 2.f);
+            set_vec3(&col[1 + o], rc / 3.f, gc / 31.f, bc / 2.f);
+            set_vec3(&col[2 + o], rc / 3.f, gc / 31.f, bc / 2.f);
+            set_vec3(&col[3 + o], rc / 3.f, gc / 31.f, bc / 2.f);
+            set_vec3(&col[4 + o], rc / 3.f, gc / 31.f, bc / 2.f);
+            set_vec3(&col[5 + o], rc / 3.f, gc / 31.f, bc / 2.f);
+        }
+    }
+    for (; i < nlines; ++i) {
+        for (int j = 0; j < 16; ++j) {
+            size_t o = j * 6 + i * 96;
+            set_vec3(&col[0 + o], bg[0], bg[1], bg[2]);
+            set_vec3(&col[1 + o], bg[0], bg[1], bg[2]);
+            set_vec3(&col[2 + o], bg[0], bg[1], bg[2]);
+            set_vec3(&col[3 + o], bg[0], bg[1], bg[2]);
+            set_vec3(&col[4 + o], bg[0], bg[1], bg[2]);
+            set_vec3(&col[5 + o], bg[0], bg[1], bg[2]);
+        }
+    }
+
+}
+
+static void
 set_vrx_table(void) {
     for (int j = 0; j < nlines; ++j) {
         for (int i = 0; i < 16; ++i) {
             size_t o = i * 6 + j * 96;
-            set_vec2(&vrx[0 + o], nx((ix + i + 0) / nch), ny(iy * (j + 0)));
-            set_vec2(&vrx[1 + o], nx((ix + i + 1) / nch), ny(iy * (j + 0)));
-            set_vec2(&vrx[2 + o], nx((ix + i + 1) / nch), ny(iy * (j + 1)));
-            set_vec2(&vrx[3 + o], nx((ix + i + 1) / nch), ny(iy * (j + 1)));
-            set_vec2(&vrx[4 + o], nx((ix + i + 0) / nch), ny(iy * (j + 1)));
-            set_vec2(&vrx[5 + o], nx((ix + i + 0) / nch), ny(iy * (j + 0)));
+            set_vec2(&vrx[0 + o], nx((ix + i + 0) / nch), ny(iy * (j + 1)));
+            set_vec2(&vrx[1 + o], nx((ix + i + 1) / nch), ny(iy * (j + 1)));
+            set_vec2(&vrx[2 + o], nx((ix + i + 1) / nch), ny(iy * (j + 2)));
+            set_vec2(&vrx[3 + o], nx((ix + i + 1) / nch), ny(iy * (j + 2)));
+            set_vec2(&vrx[4 + o], nx((ix + i + 0) / nch), ny(iy * (j + 2)));
+            set_vec2(&vrx[5 + o], nx((ix + i + 0) / nch), ny(iy * (j + 1)));
         }
     }
 }
@@ -321,7 +350,7 @@ main(int argc, char *argv[]) {
     if (argc - 1 != 1) {
         errx(1, "not enough arguments");
     }
-    int fd = open(argv[1], O_RDONLY);
+    int fd = open((fname = argv[1]), O_RDONLY);
     if (fd == -1) {
         err(1, "open");
     }
@@ -343,7 +372,7 @@ main(int argc, char *argv[]) {
     winy = glutGet(GLUT_SCREEN_HEIGHT);
     winx = glutGet(GLUT_SCREEN_WIDTH);
 
-    nlines = winy / hfont;
+    nlines = winy / hfont - 1;
     if (nlines > MXLINES || nlines < 4) {
         errx(1, "too many lines");
     }
@@ -386,6 +415,7 @@ main(int argc, char *argv[]) {
 
     glutReshapeFunc(resize);
     glutDisplayFunc(display);
+    glClearColor(bg[0], bg[1], bg[2], 1.0f);
     display();
     glutKeyboardFunc(key_ascii);
     glutSpecialFunc(key_nav);
