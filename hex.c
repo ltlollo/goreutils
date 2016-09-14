@@ -1,5 +1,6 @@
 // gcc self $cflags -lglut -lGL -lGLU -o hex
 
+
 #include <err.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -14,67 +15,89 @@
 #include <GL/gl.h>
 #include <GL/glext.h>
 #include <GL/glut.h>
+#include <GL/freeglut.h>
 
 #ifndef __cplusplus
-#define bool char
+#define bool short
+#define true 1
+#define false 0
 #define decltype(x) typeof(x)
 #define constexpr const
+#define atomic(x) _Alignas(64) x
 #endif
+
+#include <assert.h>
 
 #define ADDR "0000000000000000"
 #define COL " 00 00 00 00 00 00 00 00 |"
 #define MODEL ADDR COL COL
 #define MXLINES 160
+#define MXCMD 63
+
+#define KEY_ENTER 13
+#define KEY_BACKSPACE 8
+#define KEY_DELETE 127
+#define KEY_ESCAPE 27
 
 #define cxsize(x) (sizeof(x) / sizeof(*x))
 #define cxlen(x) (cxsize(x) - 1)
-#define access(x) (*(volatile decltype(x) *)&(x))
 #define min(x, y) ((x) > (y) ? (y) : (x))
+#define access(x) (*(volatile decltype(x) *)&(x))
 #define unused_attr __attribute__((unused))
+#define unlikely(x) __builtin_expect(!!(x), 0)
+#define likely(x) __builtin_expect(!!(x), 1)
 
 typedef struct { float x, y; } vec2;
 typedef struct { float x, y, z; } vec3;
 
 static const char* fname;
 static void *font = GLUT_BITMAP_8_BY_13;
-static int winy, winx, nlines;
-static unsigned char *beg, *end, *curs;
+static atomic(int) winy, winx, nlines;
+static unsigned char *beg, *end;
+static atomic(unsigned char *) curs;
 static size_t nvx;
-static unsigned char choff = 0;
+static atomic(unsigned char) choff = 0;
 static GLuint vs, fs, sp, vao, vbo[2];
 static vec2 vrx[MXLINES * 96];
 static vec3 col[MXLINES * 96];
+
+static atomic(float) ix = cxlen(MODEL) + 16, iy;
+static char cmdbuf[MXCMD + 1];
+static char *cmdcurr = cmdbuf;
+static atomic(bool) cmderr = 0;
+
 static constexpr int xoff = 5, yoff = 13 * 2;
 static constexpr int hfont = 13, unused_attr wfont = 8;
 static constexpr float nch = cxlen(MODEL) + 2 * 16;
 static constexpr float bg[3] = { 0.1, 0.1, 0.1 };
-static float ix = cxlen(MODEL) + 16, iy;
-static constexpr char *vsh = "\n#version 130"
-                             "\nin vec2 inpos;"
-                             "\nin vec3 incol;"
-                             "\nout vec3 excol;"
-                             "\nvoid main() {"
-                             "\n    gl_Position = vec4(inpos, 0.0, 1.0);"
-                             "\n    excol = incol;"
-                             "\n}";
-static constexpr char *fsh = "\n#version 130"
-                             "\nprecision highp float;"
-                             "\nin vec3 excol;"
-                             "\nout vec4 fragColor;"
-                             "\nvoid main() {"
-                             "\n    fragColor = vec4(excol, 1.0);"
-                             "\n}";
+static const char *vsh = "\n#version 130"
+                         "\nin vec2 inpos;"
+                         "\nin vec3 incol;"
+                         "\nout vec3 excol;"
+                         "\nvoid main() {"
+                         "\n    gl_Position = vec4(inpos, 0.0, 1.0);"
+                         "\n    excol = incol;"
+                         "\n}";
+static const char *fsh = "\n#version 130"
+                         "\nprecision highp float;"
+                         "\nin vec3 excol;"
+                         "\nout vec4 fragColor;"
+                         "\nvoid main() {"
+                         "\n    fragColor = vec4(excol, 1.0);"
+                         "\n}";
 
 static inline float nx(float);
 static inline float ny(float);
 static inline void set_vec2(vec2 *, float, float);
 static inline void set_vec3(vec3 *, float, float, float);
+static inline void *clamp(void *, void *, void *);
+static inline unsigned char to_hex(unsigned char c);
+
 static void resize(int, int);
 static void setOrthographicProjection(void);
 static void resetPerspectiveProjection(void);
 static void draw_arr(float, float, unsigned char *, size_t);
 static void draw_cstr(float, float, char *);
-static unsigned char to_hex(unsigned char c);
 static unsigned char *format_buf(unsigned char *, unsigned char *);
 static void check_shader(GLuint);
 static void key_nav(int k, int, int);
@@ -82,7 +105,9 @@ static void key_ascii(unsigned char, int, int);
 static void set_vrx_table(void);
 static void set_col_table(unsigned char*);
 static void display(void);
-static void display_info(unsigned char charoff);
+static void display_info(unsigned char charoff, unsigned);
+
+static bool exec_cmd(unsigned char *);
 
 static inline float
 nx(float f) {
@@ -159,10 +184,9 @@ draw_cstr(float x, float y, char *str) {
     }
 }
 
-
-static unsigned char
+static inline unsigned char
 to_hex(unsigned char c) {
-    if (c < 10) {
+    if (likely(c < 10)) {
         return c + '0';
     }
     return c - 10 + 'a';
@@ -210,9 +234,13 @@ check_shader(GLuint shader) {
     }
 }
 
-static void display_info(unsigned char charoff) {
+static void
+display_info(unsigned char coff, unsigned rpos) {
     static char buf[256] = { 0 };
-    snprintf(buf, 256, "choff: %03d, filename: %s", charoff, fname);
+    char err = unlikely(access(cmderr)) ? '!' : ' ';
+    snprintf(buf, 256, "choff:%*d \x19 pos:%*d \x19 cmd:%c%14.*s \x19 "
+                       "filename: %s",
+             3, coff, 3, rpos, err, (int)(cmdcurr - cmdbuf), cmdbuf, fname);
     draw_cstr(xoff, yoff/2, buf);
 }
 
@@ -221,6 +249,7 @@ display(void) {
     static unsigned char buf[cxlen(MODEL) + 16] = { 0 };
     unsigned char *curr = access(curs), *slice = curr;
     unsigned char charoff = access(choff);
+    unsigned rpos = 100 * (curr - beg) / (end - beg);
 
     set_col_table(slice);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vec3) * nvx, col, GL_STREAM_DRAW);
@@ -230,15 +259,19 @@ display(void) {
     glPushMatrix();
     glLoadIdentity();
 
-    display_info(charoff);
+    display_info(charoff, rpos);
     for (int i = 0, y = yoff; i < nlines && curr < end;
          ++i, y += hfont, curr += 16) {
         unsigned char *strend = format_buf(curr, buf);
         size_t rest = min(end - curr, 16);
         memcpy(strend, curr, rest);
-
         for (int j = 0; j < 16; ++j) {
             strend[j] += charoff;
+        }
+        for (int j = 0; j < 16; ++j) {
+            if (unlikely(!strend[j])) {
+                strend[j] = ' ';
+            }
         }
         draw_arr(xoff, y, buf, cxlen(MODEL) + rest);
     }
@@ -251,49 +284,117 @@ display(void) {
 static void
 key_nav(int k, int unused_attr f, int unused_attr s) {
     unsigned char *curr = access(curs);
-    unsigned stp = 8 * winy / hfont;
+    unsigned stp = nlines / 2 * 16;
     switch (k) {
     default:
         return;
     case GLUT_KEY_UP:
-        if (curr != beg) {
-            access(curs) = curr - 16;
-        }
+        access(curs) = clamp(curr - 16, beg, end);
         break;
     case GLUT_KEY_DOWN:
-        if (curr < end) {
-            access(curs) = curr + 16;
-        }
+        access(curs) = clamp(curr + 16, beg, end);
         break;
     case GLUT_KEY_PAGE_UP:
-        if (curr - stp < beg) {
-            access(curs) = beg;
-        } else {
-            access(curs) = curr - stp;
-        }
+        access(curs) = clamp(curr - stp, beg, end);
         break;
     case GLUT_KEY_PAGE_DOWN:
-        if (curr + stp < end) {
-            access(curs) = curr + stp;
-        }
+        access(curs) = clamp(curr + stp, beg, end);
+        break;
+    case GLUT_KEY_HOME:
+        access(curs) = beg;
+        break;
+    case GLUT_KEY_END:
+        access(curs) = end;
         break;
     }
     glutPostRedisplay();
 }
 
+static inline void *
+clamp(void *ptr, void *llimit, void *rlimit) {
+    if (unlikely(ptr < llimit)) {
+        return llimit;
+    } else if (unlikely(ptr > rlimit)) {
+        return rlimit;
+    }
+    return ptr;
+}
+
+static bool exec_cmd(unsigned char * curr) {
+    assert(cmdcurr < cmdbuf + sizeof(cmdbuf));
+    *cmdcurr = '\0';
+    char *ibeg;
+    long long off = strtoll(cmdbuf, &ibeg, 16);
+    bool valid_off = ibeg != cmdbuf;
+
+    return false;
+
+    switch (*ibeg++) {
+    default: return false;
+    case 'j':
+        if (!valid_off) {
+            if (*ibeg++ == 'e' && *ibeg++ == '\0') {
+                access(curs) = end;
+                return true;
+            }
+            return false;
+        }
+        switch (*ibeg++) {
+        default:
+            return false;
+        case '\0':
+            access(curs) = clamp(curr + off, beg, end);
+            return true;
+        case 'a':
+            if (*ibeg != '\0') {
+                return false;
+            }
+            access(curs) = clamp(beg + off, beg, end);
+            return true;
+        }
+        break;
+    case 'e':
+        break;
+    }
+    return false;
+}
+
 static void
 key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
+    unsigned char *curr = access(curs);
     switch (k) {
     default:
-        return;
-    case 27:
+        if (unlikely(cmdcurr == cmdbuf + MXCMD)) {
+            return;
+        }
+        *cmdcurr++ = k;
+        break;
     case 'q':
         exit(0);
-    case '+':
+    case 'o':
         access(choff) = choff + 1;
         break;
-    case '-':
+    case 'p':
         access(choff) = choff - 1;
+        break;
+    case '>':
+        access(curs) = clamp(curr - 1, beg, end);
+        break;
+    case '<':
+        access(curs) = clamp(curr + 1, beg, end);
+        break;
+    case KEY_ESCAPE:
+        cmdcurr = cmdbuf;
+        access(cmderr) = 0;
+        break;
+    case KEY_ENTER:
+        access(cmderr) = !exec_cmd(curr);
+        break;
+    case KEY_BACKSPACE:
+    case KEY_DELETE:
+        if (unlikely(--cmdcurr < cmdbuf)) {
+            cmdcurr = cmdbuf;
+        }
         break;
     }
     glutPostRedisplay();
@@ -359,8 +460,8 @@ main(int argc, char *argv[]) {
         err(1, "fstat");
     }
     size_t len = sb.st_size;
-    beg = mmap(NULL, len, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd, 0);
-    if (beg == MAP_FAILED) {
+    if ((beg = mmap(NULL, len, PROT_READ | PROT_WRITE,
+                    MAP_PRIVATE | MAP_POPULATE, fd, 0)) == MAP_FAILED) {
         err(1, "mmap");
     }
     curs = beg;
