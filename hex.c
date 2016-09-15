@@ -72,8 +72,8 @@ typedef struct {
 static const char *fname;
 static void *font = GLUT_BITMAP_8_BY_13;
 static atomic(int) winy, winx, nlines;
-static unsigned char *beg, *end;
-static atomic(unsigned char *) curs;
+static unsigned char *file_beg, *file_end;
+static atomic(unsigned char *) file_curs;
 static size_t nvx;
 static atomic(unsigned char) choff = 0;
 static GLuint vs, fs, sp, vao, vbo[2];
@@ -81,11 +81,11 @@ static vec2 vrx[MXLINES * 96];
 static vec3 col[MXLINES * 96];
 
 static atomic(float) ix = cxlen(MODEL) + 16, iy;
-static char cmdbuf[MXCMD + 1];
-static char *cmdcurr = cmdbuf;
+static char cmdstr[MXCMD + 1];
+static char *cmdstr_end = cmdstr;
 
-static char icache[MXCMD * sizeof(instr)];
-static atomic(instr *) iend = (instr *)icache;
+static char icache_end[MXCMD * sizeof(instr)];
+static atomic(instr *) iend = (instr *)icache_end;
 
 static const int xoff = 5, yoff = 13 * 2;
 static const int hfont = 13, unused_attr wfont = 8;
@@ -147,12 +147,12 @@ main(int argc, char *argv[]) {
         err(1, "fstat");
     }
     size_t len = sb.st_size;
-    if ((beg = mmap(NULL, len, PROT_READ | PROT_WRITE,
-                    MAP_PRIVATE | MAP_POPULATE, fd, 0)) == MAP_FAILED) {
+    if ((file_beg = mmap(NULL, len, PROT_READ | PROT_WRITE,
+                         MAP_PRIVATE | MAP_POPULATE, fd, 0)) == MAP_FAILED) {
         err(1, "mmap");
     }
-    curs = beg;
-    end = beg + len;
+    file_curs = file_beg;
+    file_end = file_beg + len;
 
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE);
@@ -251,9 +251,9 @@ resetPerspectiveProjection(void) {
 static void
 display(void) {
     static unsigned char buf[cxlen(MODEL) + 16] = { 0 };
-    unsigned char *curr = access(curs), *slice = curr;
+    unsigned char *curr = access(file_curs), *slice = curr;
     unsigned char charoff = access(choff);
-    unsigned rpos = 100 * (curr - beg) / (end - beg);
+    unsigned rpos = 100 * (curr - file_beg) / (file_end - file_beg);
 
     set_col_table(slice);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vec3) * nvx, col, GL_STREAM_DRAW);
@@ -264,10 +264,10 @@ display(void) {
     glLoadIdentity();
 
     display_info(charoff, rpos);
-    for (int i = 0, y = yoff; i < nlines && curr < end;
+    for (int i = 0, y = yoff; i < nlines && curr < file_end;
          ++i, y += hfont, curr += 16) {
         unsigned char *strend = format_buf(curr, buf);
-        size_t rest = min(end - curr, 16);
+        size_t rest = min(file_end - curr, 16);
         memcpy(strend, curr, rest);
         for (int j = 0; j < 16; ++j) {
             strend[j] += charoff;
@@ -287,7 +287,7 @@ display(void) {
 
 static unsigned char *
 format_buf(unsigned char *cur, unsigned char *buf) {
-    size_t pos = cur - beg;
+    size_t pos = cur - file_beg;
     for (int i = 0; i < 16; ++i) {
         *buf++ = to_hex((pos >> (16 - 1 - i) * 4) & 0xf);
     }
@@ -295,7 +295,7 @@ format_buf(unsigned char *cur, unsigned char *buf) {
     *buf++ = ' ';
     for (int i = 0; i < 2; ++i) {
         for (int j = 0; j < 8; ++j) {
-            if (cur < end) {
+            if (cur < file_end) {
                 *buf++ = to_hex(*cur >> 4);
                 *buf++ = to_hex(*cur & 0xf);
             } else {
@@ -317,36 +317,28 @@ display_info(unsigned char coff, unsigned rpos) {
     char err = unlikely(access(iend) == NULL) ? '!' : ' ';
     snprintf(buf, 256, "choff:%*d \x19 pos:%*d \x19 cmd:%c%14.*s \x19 "
                        "filename: %s",
-             3, coff, 3, rpos, err, (int)(cmdcurr - cmdbuf), cmdbuf, fname);
+             3, coff, 3, rpos, err, (int)(cmdstr_end - cmdstr), cmdstr, fname);
     draw_cstr(xoff, yoff / 2, buf);
 }
 
 static void
 set_col_table(unsigned char *slice) {
     int i = 0;
-    for (; i < nlines && slice < end; ++i, slice += 16) {
+    for (; i < nlines && slice < file_end; ++i, slice += 16) {
         for (int j = 0; j < 16; ++j) {
             float rc = (slice[j] >> 6);
             float bc = (slice[j] >> 5) & 1;
             float gc = (slice[j] >> 0) & 31;
-            size_t o = j * 6 + i * 96;
-            set_vec3(&col[0 + o], rc / 3.f, gc / 31.f, bc / 2.f);
-            set_vec3(&col[1 + o], rc / 3.f, gc / 31.f, bc / 2.f);
-            set_vec3(&col[2 + o], rc / 3.f, gc / 31.f, bc / 2.f);
-            set_vec3(&col[3 + o], rc / 3.f, gc / 31.f, bc / 2.f);
-            set_vec3(&col[4 + o], rc / 3.f, gc / 31.f, bc / 2.f);
-            set_vec3(&col[5 + o], rc / 3.f, gc / 31.f, bc / 2.f);
+            for (size_t k = j * 6 + i * 96; k < j * 6 + i * 96 + 16ull; ++k) {
+                set_vec3(&col[k], rc / 3.f, gc / 31.f, bc / 2.f);
+            }
         }
     }
     for (; i < nlines; ++i) {
         for (int j = 0; j < 16; ++j) {
-            size_t o = j * 6 + i * 96;
-            set_vec3(&col[0 + o], bg[0], bg[1], bg[2]);
-            set_vec3(&col[1 + o], bg[0], bg[1], bg[2]);
-            set_vec3(&col[2 + o], bg[0], bg[1], bg[2]);
-            set_vec3(&col[3 + o], bg[0], bg[1], bg[2]);
-            set_vec3(&col[4 + o], bg[0], bg[1], bg[2]);
-            set_vec3(&col[5 + o], bg[0], bg[1], bg[2]);
+            for (size_t k = j * 6 + i * 96; k < j * 6 + i * 96 + 16ull; ++k) {
+                set_vec3(&col[k], bg[0], bg[1], bg[2]);
+            }
         }
     }
 }
@@ -355,13 +347,13 @@ static void
 set_vrx_table(void) {
     for (int j = 0; j < nlines; ++j) {
         for (int i = 0; i < 16; ++i) {
-            size_t o = i * 6 + j * 96;
-            set_vec2(&vrx[0 + o], nx((ix + i + 0) / nch), ny(iy * (j + 1)));
-            set_vec2(&vrx[1 + o], nx((ix + i + 1) / nch), ny(iy * (j + 1)));
-            set_vec2(&vrx[2 + o], nx((ix + i + 1) / nch), ny(iy * (j + 2)));
-            set_vec2(&vrx[3 + o], nx((ix + i + 1) / nch), ny(iy * (j + 2)));
-            set_vec2(&vrx[4 + o], nx((ix + i + 0) / nch), ny(iy * (j + 2)));
-            set_vec2(&vrx[5 + o], nx((ix + i + 0) / nch), ny(iy * (j + 1)));
+            size_t k = i * 6 + j * 96;
+            set_vec2(&vrx[0 + k], nx((ix + i + 0) / nch), ny(iy * (j + 1)));
+            set_vec2(&vrx[1 + k], nx((ix + i + 1) / nch), ny(iy * (j + 1)));
+            set_vec2(&vrx[2 + k], nx((ix + i + 1) / nch), ny(iy * (j + 2)));
+            set_vec2(&vrx[3 + k], nx((ix + i + 1) / nch), ny(iy * (j + 2)));
+            set_vec2(&vrx[4 + k], nx((ix + i + 0) / nch), ny(iy * (j + 2)));
+            set_vec2(&vrx[5 + k], nx((ix + i + 0) / nch), ny(iy * (j + 1)));
         }
     }
 }
@@ -384,28 +376,28 @@ check_shader(GLuint shader) {
 
 static void
 key_nav(int k, int unused_attr f, int unused_attr s) {
-    unsigned char *curr = access(curs);
+    unsigned char *curr = access(file_curs);
     unsigned stp = nlines / 2 * 16;
     switch (k) {
     default:
         return;
     case GLUT_KEY_UP:
-        access(curs) = clamp(curr - 16, beg, end);
+        access(file_curs) = clamp(curr - 16, file_beg, file_end);
         break;
     case GLUT_KEY_DOWN:
-        access(curs) = clamp(curr + 16, beg, end);
+        access(file_curs) = clamp(curr + 16, file_beg, file_end);
         break;
     case GLUT_KEY_PAGE_UP:
-        access(curs) = clamp(curr - stp, beg, end);
+        access(file_curs) = clamp(curr - stp, file_beg, file_end);
         break;
     case GLUT_KEY_PAGE_DOWN:
-        access(curs) = clamp(curr + stp, beg, end);
+        access(file_curs) = clamp(curr + stp, file_beg, file_end);
         break;
     case GLUT_KEY_HOME:
-        access(curs) = beg;
+        access(file_curs) = file_beg;
         break;
     case GLUT_KEY_END:
-        access(curs) = end;
+        access(file_curs) = file_end;
         break;
     }
     glutPostRedisplay();
@@ -413,14 +405,14 @@ key_nav(int k, int unused_attr f, int unused_attr s) {
 
 static void
 key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
-    unsigned char *curr = access(curs);
+    unsigned char *curr = access(file_curs);
     switch (k) {
     default:
-        if (unlikely(cmdcurr == cmdbuf + MXCMD)) {
+        if (unlikely(cmdstr_end == cmdstr + MXCMD)) {
             return;
         }
-        *cmdcurr++ = k;
-        iend = (instr *)icache;
+        *cmdstr_end++ = k;
+        iend = (instr *)icache_end;
         break;
     case 'Q':
         exit(EXIT_SUCCESS);
@@ -431,22 +423,22 @@ key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
         access(choff) = choff - 1;
         break;
     case '>':
-        access(curs) = clamp(curr - 1, beg, end);
+        access(file_curs) = clamp(curr - 1, file_beg, file_end);
         break;
     case '<':
-        access(curs) = clamp(curr + 1, beg, end);
+        access(file_curs) = clamp(curr + 1, file_beg, file_end);
         break;
     case KEY_ESCAPE:
-        cmdcurr = cmdbuf;
-        iend = (instr *)icache;
+        cmdstr_end = cmdstr;
+        iend = (instr *)icache_end;
         break;
     case KEY_ENTER:
         iend = exec_cmd(curr);
         break;
     case KEY_BACKSPACE:
     case KEY_DELETE:
-        if (unlikely(--cmdcurr < cmdbuf)) {
-            cmdcurr = cmdbuf;
+        if (unlikely(--cmdstr_end < cmdstr)) {
+            cmdstr_end = cmdstr;
         }
         break;
     }
@@ -455,21 +447,21 @@ key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
 
 static instr *
 exec_cmd(unsigned char *curr) {
-    if (iend == NULL || iend == (instr *)icache) {
-        if ((iend = parse_cmd((instr *)icache)) == NULL) {
+    if (iend == NULL || iend == (instr *)icache_end) {
+        if ((iend = parse_cmd((instr *)icache_end)) == NULL) {
             return NULL;
         }
     }
-    access(curs) = exec_ilist(curr, (instr *)icache, iend);
+    access(file_curs) = exec_ilist(curr, (instr *)icache_end, iend);
     return iend;
 }
 
 static instr *
 parse_cmd(instr *istream) {
-    char *cmdcurs, *cmd = cmdbuf;
+    char *cmdcurs, *cmd = cmdstr;
     instr *istrbeg = istream;
-    assert(cmdcurr < cmdbuf + sizeof(cmdbuf));
-    *cmdcurr = '\0';
+    assert(cmdstr_end < cmdstr + sizeof(cmdstr));
+    *cmdstr_end = '\0';
 
     while (true) {
         switch (*cmd) {
@@ -515,11 +507,11 @@ CHECK_CMD:
 }
 
 static long long
-strtobighex(char *what, char **end, unsigned char *hex_out) {
+strtobighex(char *strbeg, char **strend, unsigned char *hexout) {
     long long nnibble = 0;
     unsigned char curr = 0;
     while (true) {
-        unsigned char c = *what;
+        unsigned char c = *strbeg;
         if (c >= '0' && c <= '9') {
             c -= '0';
         } else if (c >= 'a' && c <= 'f') {
@@ -528,16 +520,16 @@ strtobighex(char *what, char **end, unsigned char *hex_out) {
             break;
         }
         if (++nnibble % 2 == 0) {
-            *hex_out++ = (curr | c);
+            *hexout++ = (curr | c);
         } else {
             curr = c << 4;
         }
-        what++;
+        strbeg++;
     }
     if (nnibble % 2) {
-        *hex_out = curr;
+        *hexout = curr;
     }
-    *end = what;
+    *strend = strbeg;
     return nnibble;
 }
 
@@ -551,10 +543,10 @@ exec_ilist(unsigned char *curr, instr *ibeg, instr *iend) {
             }
             return curr;
         case go:
-            curr = clamp(beg + ibeg->imm, beg, end);
+            curr = clamp(file_beg + ibeg->imm, file_beg, file_end);
             break;
         case jmp:
-            curr = clamp(curr + ibeg->imm, beg, end);
+            curr = clamp(curr + ibeg->imm, file_beg, file_end);
             break;
         case wrt:
         default:
