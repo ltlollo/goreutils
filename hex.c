@@ -47,7 +47,7 @@
         perr(x);                                                              \
         exit(EXIT_FAILURE);                                                   \
     } while (0)
-#ifdef NDEBUG
+#ifndef NDEBUG
 #define assert(x)                                                             \
     do {                                                                      \
         __asm__ __volatile__("" : : : "memory");                              \
@@ -315,7 +315,7 @@ static void
 display_info(unsigned char coff, unsigned rpos) {
     static char buf[256] = { 0 };
     char err = unlikely(access(iend) == NULL) ? '!' : ' ';
-    snprintf(buf, 256, "choff:%*d \x19 pos:%*d \x19 cmd:%c%14.*s \x19 "
+    snprintf(buf, 256, "choff:%*d \x19 pos:%*d \x19 cmd:%c%-14.*s \x19 "
                        "filename: %s",
              3, coff, 3, rpos, err, (int)(cmdstr_end - cmdstr), cmdstr, fname);
     draw_cstr(xoff, yoff / 2, buf);
@@ -447,7 +447,7 @@ key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
 
 static instr *
 exec_cmd(unsigned char *curr) {
-    if (iend == NULL || iend == (instr *)icache_end) {
+    if (iend == (instr *)icache_end) {
         if ((iend = parse_cmd((instr *)icache_end)) == NULL) {
             return NULL;
         }
