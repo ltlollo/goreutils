@@ -84,8 +84,8 @@ static atomic(float) ix = cxlen(MODEL) + 16, iy;
 static char cmdstr[MXCMD + 1];
 static char *cmdstr_end = cmdstr;
 
-static char icache_end[MXCMD * sizeof(instr)];
-static atomic(instr *) iend = (instr *)icache_end;
+static char icache_beg[MXCMD * sizeof(instr)];
+static atomic(instr *) iend = (instr *)icache_beg;
 
 static const int xoff = 5, yoff = 13 * 2;
 static const int hfont = 13, unused_attr wfont = 8;
@@ -114,6 +114,7 @@ static inline void set_vec3(vec3 *, float, float, float);
 static inline void *clamp(void *, void *, void *);
 static inline unsigned char to_hex(unsigned char c);
 static inline instr *next_instr(instr *);
+static void check_shader(GLuint);
 
 static long long strtobighex(char *, char **, unsigned char *);
 static void resize(int, int);
@@ -122,7 +123,6 @@ static void resetPerspectiveProjection(void);
 static void draw_arr(float, float, unsigned char *, size_t);
 static void draw_cstr(float, float, char *);
 static unsigned char *format_buf(unsigned char *, unsigned char *);
-static void check_shader(GLuint);
 static void key_nav(int k, int, int);
 static void key_ascii(unsigned char, int, int);
 static void set_vrx_table(void);
@@ -393,6 +393,12 @@ key_nav(int k, int unused_attr f, int unused_attr s) {
     case GLUT_KEY_PAGE_DOWN:
         access(file_curs) = clamp(curr + stp, file_beg, file_end);
         break;
+    case GLUT_KEY_LEFT:
+        access(file_curs) = clamp(curr + 1, file_beg, file_end);
+        break;
+    case GLUT_KEY_RIGHT:
+        access(file_curs) = clamp(curr - 1, file_beg, file_end);
+        break;
     case GLUT_KEY_HOME:
         access(file_curs) = file_beg;
         break;
@@ -412,7 +418,7 @@ key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
             return;
         }
         *cmdstr_end++ = k;
-        iend = (instr *)icache_end;
+        iend = (instr *)icache_beg;
         break;
     case 'Q':
         exit(EXIT_SUCCESS);
@@ -430,7 +436,7 @@ key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
         break;
     case KEY_ESCAPE:
         cmdstr_end = cmdstr;
-        iend = (instr *)icache_end;
+        iend = (instr *)icache_beg;
         break;
     case KEY_ENTER:
         iend = exec_cmd(curr);
@@ -447,28 +453,31 @@ key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
 
 static instr *
 exec_cmd(unsigned char *curr) {
-    if (iend == (instr *)icache_end) {
-        if ((iend = parse_cmd((instr *)icache_end)) == NULL) {
+    if (unlikely(iend == NULL)) {
+        return NULL;
+    }
+    if (iend == (instr *)icache_beg) {
+        if ((iend = parse_cmd((instr *)icache_beg)) == NULL) {
             return NULL;
         }
     }
-    access(file_curs) = exec_ilist(curr, (instr *)icache_end, iend);
+    access(file_curs) = exec_ilist(curr, (instr *)icache_beg, iend);
     return iend;
 }
 
 static instr *
 parse_cmd(instr *istream) {
-    char *cmdcurs, *cmd = cmdstr;
-    instr *istrbeg = istream;
+    char *cmdcurs, *cmd = cmdstr, c;
+    instr *zrep = NULL;
     assert(cmdstr_end < cmdstr + sizeof(cmdstr));
     *cmdstr_end = '\0';
 
     while (true) {
-        switch (*cmd) {
+        switch ((c = *cmd)) {
         default:
             return NULL;
         case '\0':
-            goto CHECK_CMD;
+            goto PARSE_RET;
         case 'w':
             istream->code = wrt;
             istream->imm = strtobighex(cmd + 1, &cmdcurs, istream->arr);
@@ -480,30 +489,35 @@ parse_cmd(instr *istream) {
         case 'j':
         case 'g':
         case 'r':
-            if (*cmd == 'j') {
-                istream->code = jmp;
-            } else if (*cmd == 'g') {
-                istream->code = go;
-            } else if (*cmd == 'r') {
-                istream->code = rep;
-            }
             istream->imm = strtoll(cmd + 1, &cmdcurs, 16);
-            if (cmdcurs == cmd + 1) {
+            cmd = cmdcurs;
+            if (unlikely(cmdcurs == cmd + 1)) {
                 return NULL;
             }
-            cmd = cmdcurs;
+            if (c == 'j') {
+                istream->code = jmp;
+                if (unlikely(istream->imm == 0)) {
+                    continue;
+                }
+            } else if (c == 'g') {
+                istream->code = go;
+                istream->imm = (unsigned char *)clamp(file_beg + istream->imm,
+                                                      file_beg, file_end) -
+                               file_beg;
+            } else if (c == 'r') {
+                istream->code = rep;
+                if (unlikely(istream->imm == 0)) {
+                    zrep = istream;
+                } else if (unlikely(istream->imm == 1)) {
+                    continue;
+                }
+            }
             break;
         }
         istream = next_instr(istream);
     }
-CHECK_CMD:
-    while (istrbeg != istream) {
-        if (istrbeg->code == rep && istrbeg->imm == 0) {
-            return istrbeg;
-        }
-        istrbeg = next_instr(istrbeg);
-    }
-    return istrbeg;
+PARSE_RET:
+    return zrep ? zrep : istream;
 }
 
 static long long
