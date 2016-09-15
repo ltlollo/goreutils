@@ -57,7 +57,7 @@
         }                                                                     \
     } while (0)
 #else
-#define assert(x)
+#define assert(x) (void)(x)
 #endif
 
 typedef struct { float x, y; } vec2;
@@ -455,8 +455,7 @@ static instr *
 exec_cmd(unsigned char *curr) {
     if (unlikely(iend == NULL)) {
         return NULL;
-    }
-    if (iend == (instr *)icache_beg) {
+    } else if (iend == (instr *)icache_beg) {
         if ((iend = parse_cmd((instr *)icache_beg)) == NULL) {
             return NULL;
         }
