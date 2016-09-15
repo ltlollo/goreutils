@@ -1,6 +1,5 @@
 // gcc self $cflags -lglut -lGL -lGLU -o hex
 
-#include <assert.h>
 #include <err.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -20,7 +19,6 @@
 #define bool short
 #define true 1
 #define false 0
-#define decltype(x) typeof(x)
 #define atomic(x) _Alignas(64) x
 
 #define ADDR "0000000000000000"
@@ -37,10 +35,30 @@
 #define cxsize(x) (sizeof(x) / sizeof(*x))
 #define cxlen(x) (cxsize(x) - 1)
 #define min(x, y) ((x) > (y) ? (y) : (x))
-#define access(x) (*(volatile decltype(x) *)&(x))
+#define access(x) (*(volatile typeof(x) *)&(x))
 #define unused_attr __attribute__((unused))
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #define likely(x) __builtin_expect(!!(x), 1)
+#define str(x) #x
+#define tok(x) str(x)
+#define perr(x) fwrite(x, 1, cxlen(x), stderr);
+#define fail(x)                                                               \
+    do {                                                                      \
+        perr(x);                                                              \
+        exit(EXIT_FAILURE);                                                   \
+    } while (0)
+#ifdef NDEBUG
+#define assert(x)                                                             \
+    do {                                                                      \
+        __asm__ __volatile__("" : : : "memory");                              \
+        if (unlikely(!(x))) {                                                 \
+            fail("err: (" str(x) ") failed at line " tok(                     \
+                __LINE__) " in " tok(__FILE__) "\n");                         \
+        }                                                                     \
+    } while (0)
+#else
+#define assert(x)
+#endif
 
 typedef struct { float x, y; } vec2;
 typedef struct { float x, y, z; } vec3;
@@ -65,7 +83,9 @@ static vec3 col[MXLINES * 96];
 static atomic(float) ix = cxlen(MODEL) + 16, iy;
 static char cmdbuf[MXCMD + 1];
 static char *cmdcurr = cmdbuf;
-static atomic(bool) cmderr = 0;
+
+static char icache[MXCMD * sizeof(instr)];
+static atomic(instr *) iend = (instr *)icache;
 
 static const int xoff = 5, yoff = 13 * 2;
 static const int hfont = 13, unused_attr wfont = 8;
@@ -110,7 +130,7 @@ static void set_col_table(unsigned char *);
 static void display(void);
 static void display_info(unsigned char, unsigned);
 static instr *parse_cmd(instr *);
-static bool exec_cmd(unsigned char *);
+static instr *exec_cmd(unsigned char *);
 static unsigned char *exec_ilist(unsigned char *, instr *, instr *);
 
 int
@@ -294,7 +314,7 @@ format_buf(unsigned char *cur, unsigned char *buf) {
 static void
 display_info(unsigned char coff, unsigned rpos) {
     static char buf[256] = { 0 };
-    char err = unlikely(access(cmderr)) ? '!' : ' ';
+    char err = unlikely(access(iend) == NULL) ? '!' : ' ';
     snprintf(buf, 256, "choff:%*d \x19 pos:%*d \x19 cmd:%c%14.*s \x19 "
                        "filename: %s",
              3, coff, 3, rpos, err, (int)(cmdcurr - cmdbuf), cmdbuf, fname);
@@ -400,6 +420,7 @@ key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
             return;
         }
         *cmdcurr++ = k;
+        iend = (instr *)icache;
         break;
     case 'Q':
         exit(EXIT_SUCCESS);
@@ -417,10 +438,10 @@ key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
         break;
     case KEY_ESCAPE:
         cmdcurr = cmdbuf;
-        access(cmderr) = 0;
+        iend = (instr *)icache;
         break;
     case KEY_ENTER:
-        access(cmderr) = !exec_cmd(curr);
+        iend = exec_cmd(curr);
         break;
     case KEY_BACKSPACE:
     case KEY_DELETE:
@@ -432,16 +453,15 @@ key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
     glutPostRedisplay();
 }
 
-static bool
+static instr *
 exec_cmd(unsigned char *curr) {
-    static char imem[MXCMD * sizeof(instr)];
-    instr *ibeg = (instr *)imem, *iend;
-
-    if ((iend = parse_cmd(ibeg)) == NULL) {
-        return false;
+    if (iend == NULL || iend == (instr *)icache) {
+        if ((iend = parse_cmd((instr *)icache)) == NULL) {
+            return NULL;
+        }
     }
-    access(curs) = exec_ilist(curr, ibeg, iend);
-    return true;
+    access(curs) = exec_ilist(curr, (instr *)icache, iend);
+    return iend;
 }
 
 static instr *
