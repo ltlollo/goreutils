@@ -48,7 +48,11 @@
         exit(EXIT_FAILURE);                                                   \
     } while (0)
 #ifndef NDEBUG
-#define assert(x)                                                             \
+#define debug_expr(x)                                                         \
+    do {                                                                      \
+        (void)(x);                                                            \
+    } while (0);
+#define debug_assert(x)                                                       \
     do {                                                                      \
         __asm__ __volatile__("" : : : "memory");                              \
         if (unlikely(!(x))) {                                                 \
@@ -57,7 +61,10 @@
         }                                                                     \
     } while (0)
 #else
-#define assert(x) (void)(x)
+#define debug_assert(x) (void)(x)
+#define debug_expr(x)                                                         \
+    do {                                                                      \
+    } while (0)
 #endif
 
 typedef struct { float x, y; } vec2;
@@ -112,10 +119,12 @@ static inline float ny(float);
 static inline void set_vec2(vec2 *, float, float);
 static inline void set_vec3(vec3 *, float, float, float);
 static inline void *clamp(void *, void *, void *);
+static inline long long clampll(long long, long long, long long);
 static inline unsigned char to_hex(unsigned char c);
 static inline instr *next_instr(instr *);
-static void check_shader(GLuint);
-static GLuint build_shader(const char *, int );
+static inline GLuint build_shader(const char *, int);
+static void unused_attr check_shader(GLuint);
+
 
 static long long strtobighex(char *, char **, unsigned char *);
 static void resize(int, int);
@@ -192,7 +201,7 @@ main(int argc, char *argv[]) {
     glBindAttribLocation(sp, 0, "inpos");
     glBindAttribLocation(sp, 1, "incol");
     glLinkProgram(sp);
-    check_shader(sp);
+    debug_expr(check_shader(sp));
     glUseProgram(sp);
 
     glutReshapeFunc(resize);
@@ -323,14 +332,14 @@ set_col_table(unsigned char *slice) {
             float rc = (slice[j] >> 6);
             float bc = (slice[j] >> 5) & 1;
             float gc = (slice[j] >> 0) & 31;
-            for (size_t k = j * 6 + i * 96; k < j * 6 + i * 96 + 16ull; ++k) {
+            for (size_t k = j * 6 + i * 96; k < j * 6 + i * 96 + 6ull; ++k) {
                 set_vec3(&col[k], rc / 3.f, gc / 31.f, bc / 2.f);
             }
         }
     }
     for (; i < nlines; ++i) {
         for (int j = 0; j < 16; ++j) {
-            for (size_t k = j * 6 + i * 96; k < j * 6 + i * 96 + 16ull; ++k) {
+            for (size_t k = j * 6 + i * 96; k < j * 6 + i * 96 + 6ull; ++k) {
                 set_vec3(&col[k], bg[0], bg[1], bg[2]);
             }
         }
@@ -352,16 +361,16 @@ set_vrx_table(void) {
     }
 }
 
-static GLuint
+static inline GLuint
 build_shader(const char *src, int type) {
     GLuint sh = glCreateShader(type);
     glShaderSource(sh, 1, &src, NULL);
     glCompileShader(sh);
-    check_shader(sh);
+    debug_expr(check_shader(sh));
     return sh;
 }
 
-static void
+static void unused_attr
 check_shader(GLuint shader) {
     GLint len, res;
     char *log;
@@ -463,7 +472,7 @@ exec_cmd(unsigned char *curr) {
             return NULL;
         }
     }
-    assert(iend < (instr *)icache_beg + sizeof(icache_beg));
+    debug_assert(iend < (instr *)icache_beg + sizeof(icache_beg));
     access(file_curs) = exec_ilist(curr, (instr *)icache_beg, iend);
     return iend;
 }
@@ -472,7 +481,7 @@ static instr *
 parse_cmd(instr *istream) {
     char *cmdcurs, *cmd = cmdstr, c;
     instr *zrep = NULL;
-    assert(cmdstr_end < cmdstr + sizeof(cmdstr));
+    debug_assert(cmdstr_end < cmdstr + sizeof(cmdstr));
     *cmdstr_end = '\0';
 
     while (true) {
@@ -484,7 +493,7 @@ parse_cmd(instr *istream) {
         case 'w':
             istream->code = wrt;
             istream->imm = strtobighex(cmd + 1, &cmdcurs, istream->arr);
-            assert(cmdcurs < cmdstr + sizeof(cmdstr));
+            debug_assert(cmdcurs < cmdstr + sizeof(cmdstr));
             if (cmdcurs == cmd + 1) {
                 return NULL;
             }
@@ -505,9 +514,7 @@ parse_cmd(instr *istream) {
                 }
             } else if (c == 'g') {
                 istream->code = go;
-                istream->imm = (unsigned char *)clamp(file_beg + istream->imm,
-                                                      file_beg, file_end) -
-                               file_beg;
+                istream->imm = clampll(istream->imm, 0, file_end - file_beg);
             } else if (c == 'r') {
                 istream->code = rep;
                 if (unlikely(istream->imm == 0)) {
@@ -561,7 +568,8 @@ exec_ilist(unsigned char *curr, instr *ibeg, instr *iend) {
             }
             return curr;
         case go:
-            curr = clamp(file_beg + ibeg->imm, file_beg, file_end);
+            debug_assert(ibeg->imm >= 0 && ibeg->imm <= file_end - file_beg);
+            curr = file_beg + ibeg->imm;
             break;
         case jmp:
             curr = clamp(curr + ibeg->imm, file_beg, file_end);
@@ -615,6 +623,15 @@ clamp(void *ptr, void *llimit, void *rlimit) {
         return rlimit;
     }
     return ptr;
+}
+static inline long long
+clampll(long long u, long long llimit, long long rlimit) {
+    if (unlikely(u < llimit)) {
+        return llimit;
+    } else if (unlikely(u > rlimit)) {
+        return rlimit;
+    }
+    return u;
 }
 
 static void
