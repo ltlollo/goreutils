@@ -115,6 +115,7 @@ static inline void *clamp(void *, void *, void *);
 static inline unsigned char to_hex(unsigned char c);
 static inline instr *next_instr(instr *);
 static void check_shader(GLuint);
+static GLuint build_shader(const char *, int );
 
 static long long strtobighex(char *, char **, unsigned char *);
 static void resize(int, int);
@@ -182,15 +183,8 @@ main(int argc, char *argv[]) {
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, 0);
     glEnableVertexAttribArray(1);
 
-    vs = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vs, 1, &vsh, NULL);
-    glCompileShader(vs);
-    check_shader(vs);
-
-    fs = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fs, 1, &fsh, NULL);
-    glCompileShader(fs);
-    check_shader(fs);
+    vs = build_shader(vsh, GL_VERTEX_SHADER);
+    fs = build_shader(fsh, GL_FRAGMENT_SHADER);
 
     sp = glCreateProgram();
     glAttachShader(sp, vs);
@@ -358,6 +352,15 @@ set_vrx_table(void) {
     }
 }
 
+static GLuint
+build_shader(const char *src, int type) {
+    GLuint sh = glCreateShader(type);
+    glShaderSource(sh, 1, &src, NULL);
+    glCompileShader(sh);
+    check_shader(sh);
+    return sh;
+}
+
 static void
 check_shader(GLuint shader) {
     GLint len, res;
@@ -460,6 +463,7 @@ exec_cmd(unsigned char *curr) {
             return NULL;
         }
     }
+    assert(iend < (instr *)icache_beg + sizeof(icache_beg));
     access(file_curs) = exec_ilist(curr, (instr *)icache_beg, iend);
     return iend;
 }
@@ -480,6 +484,7 @@ parse_cmd(instr *istream) {
         case 'w':
             istream->code = wrt;
             istream->imm = strtobighex(cmd + 1, &cmdcurs, istream->arr);
+            assert(cmdcurs < cmdstr + sizeof(cmdstr));
             if (cmdcurs == cmd + 1) {
                 return NULL;
             }
