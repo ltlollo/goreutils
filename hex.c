@@ -455,6 +455,7 @@ key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
         break;
     case KEY_BACKSPACE:
     case KEY_DELETE:
+        iend = (instr *)icache_beg;
         if (unlikely(--cmdstr_end < cmdstr)) {
             cmdstr_end = cmdstr;
         }
@@ -503,10 +504,11 @@ parse_cmd(instr *istream) {
         case 'g':
         case 'r':
             istream->imm = strtoll(cmd + 1, &cmdcurs, 16);
-            cmd = cmdcurs;
+
             if (unlikely(cmdcurs == cmd + 1)) {
                 return NULL;
             }
+            cmd = cmdcurs;
             if (c == 'j') {
                 istream->code = jmp;
                 if (unlikely(istream->imm == 0)) {
