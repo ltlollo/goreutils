@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #define GL_GLEXT_PROTOTYPES
 #include <GL/freeglut.h>
@@ -21,6 +22,7 @@
 #define false 0
 #define atomic(x) _Alignas(64) x
 
+#define DIFF_PRE ".diff."
 #define ADDR "0000000000000000"
 #define COL " 00 00 00 00 00 00 00 00 |"
 #define MODEL ADDR COL COL
@@ -37,8 +39,9 @@
 #define min(x, y) ((x) > (y) ? (y) : (x))
 #define access(x) (*(volatile typeof(x) *)&(x))
 #define unused_attr __attribute__((unused))
-#define unlikely(x) __builtin_expect(!!(x), 0)
-#define likely(x) __builtin_expect(!!(x), 1)
+#define expect(x, v) __builtin_expect(x, v)
+#define unlikely(x) expect(!!(x), 0)
+#define likely(x) expect(!!(x), 1)
 #define str(x) #x
 #define tok(x) str(x)
 #define perr(x) fwrite(x, 1, cxlen(x), stderr);
@@ -47,6 +50,7 @@
         perr(x);                                                              \
         exit(EXIT_FAILURE);                                                   \
     } while (0)
+
 #ifndef NDEBUG
 #define debug_expr(x)                                                         \
     do {                                                                      \
@@ -69,30 +73,38 @@
 
 typedef struct { float x, y; } vec2;
 typedef struct { float x, y, z; } vec3;
-typedef enum { rep = 176, jmp = 11, wrt = 237, go = 186, rsrv = 190 } op;
+typedef enum { rep = 176, jmp = 11, wrt = 186, go = 190 } op;
 typedef struct {
     op code;
     long long imm;
     unsigned char arr[];
 } instr;
+typedef struct {
+    long long size;
+    unsigned char arr[];
+} flxarr;
 
-static const char *fname;
+static int file_fd, diff_fd;
+static const char *file_name;
+static char *diff_name;
+static unsigned long long file_len, diff_len;
 static void *font = GLUT_BITMAP_8_BY_13;
 static atomic(int) winy, winx, nlines;
-static unsigned char *file_beg, *file_end;
+static unsigned char *file_beg, *file_end, *diff_beg, *diff_end, *diff_curs;
 static atomic(unsigned char *) file_curs;
 static size_t nvx;
 static atomic(unsigned char) choff = 0;
 static GLuint vs, fs, sp, vao, vbo[2];
 static vec2 vrx[MXLINES * 96];
 static vec3 col[MXLINES * 96];
+static char null[4096] = { 0 };
 
 static atomic(float) ix = cxlen(MODEL) + 16, iy;
 static char cmdstr[MXCMD + 1];
 static char *cmdstr_end = cmdstr;
 
 static char icache_beg[MXCMD * sizeof(instr)];
-static atomic(instr *) iend = (instr *)icache_beg;
+static atomic(instr *) icache_end = (instr *)icache_beg;
 
 static const int xoff = 5, yoff = 13 * 2;
 static const int hfont = 13, unused_attr wfont = 8;
@@ -125,7 +137,6 @@ static inline instr *next_instr(instr *);
 static inline GLuint build_shader(const char *, int);
 static void unused_attr check_shader(GLuint);
 
-
 static long long strtobighex(char *, char **, unsigned char *);
 static void resize(int, int);
 static void setOrthographicProjection(void);
@@ -140,29 +151,42 @@ static void set_col_table(unsigned char *);
 static void display(void);
 static void display_info(unsigned char, unsigned);
 static instr *parse_cmd(instr *);
-static instr *exec_cmd(unsigned char *);
+static instr *exec_cmd(unsigned char *, instr *);
 static unsigned char *exec_ilist(unsigned char *, instr *, instr *);
+
+static void setup_diff(void);
+static void remap_shr(bool);
+static unsigned char *grow_diff(void);
+static void commit_changes_dirty(void);
+static void commit_changes(void);
+static void write_payload(unsigned char *, flxarr *);
+static void patch_file(unsigned char *, flxarr *);
+static void stash_changes(long long off, flxarr *arr);
+static void save_diff(void);
+static void clean_diff(void);
 
 int
 main(int argc, char *argv[]) {
     if (argc - 1 != 1) {
         errx(1, "not enough arguments");
     }
-    int fd = open((fname = argv[1]), O_RDONLY);
-    if (fd == -1) {
+    if ((file_fd = open((file_name = argv[1]), O_RDONLY)) == -1) {
         err(1, "open");
     }
     struct stat sb;
-    if (fstat(fd, &sb) == -1) {
+    if (fstat(file_fd, &sb) == -1) {
         err(1, "fstat");
     }
-    size_t len = sb.st_size;
-    if ((file_beg = mmap(NULL, len, PROT_READ | PROT_WRITE,
-                         MAP_PRIVATE | MAP_POPULATE, fd, 0)) == MAP_FAILED) {
+    file_len = sb.st_size;
+    if ((file_beg = mmap(NULL, file_len, PROT_READ | PROT_WRITE,
+                         MAP_PRIVATE | MAP_POPULATE, file_fd, 0)) ==
+        MAP_FAILED) {
         err(1, "mmap");
     }
     file_curs = file_beg;
-    file_end = file_beg + len;
+    file_end = file_beg + file_len;
+
+    setup_diff();
 
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE);
@@ -212,6 +236,43 @@ main(int argc, char *argv[]) {
     glutSpecialFunc(key_nav);
     glutMainLoop();
     return 0;
+}
+
+static void
+setup_diff(void) {
+    struct stat sb;
+
+    if ((diff_name = (char *)malloc(sizeof(DIFF_PRE) + strlen(file_name))) ==
+        NULL) {
+        err(1, "malloc");
+    }
+    memcpy(diff_name, DIFF_PRE, cxlen(DIFF_PRE));
+    strcpy(diff_name + cxlen(DIFF_PRE), file_name);
+
+    if ((diff_fd = open(diff_name, O_RDWR | O_CREAT, 0644)) == -1) {
+        err(1, "open");
+    }
+    if (fstat(diff_fd, &sb) == -1) {
+        err(1, "fstat");
+    }
+    diff_len = sb.st_size;
+    if ((diff_beg = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED,
+                         diff_fd, 0)) == MAP_FAILED) {
+        err(1, "mmap");
+    }
+    diff_end = diff_beg + diff_len;
+    if (diff_len == 0) {
+        diff_end = grow_diff();
+        diff_curs = diff_beg;
+    } else {
+        remap_shr(true);
+        commit_changes_dirty();
+        remap_shr(false);
+        memset(diff_beg, 0, diff_len);
+        diff_curs = diff_beg;
+        file_curs = file_beg;
+    }
+    atexit(clean_diff);
 }
 
 static void
@@ -317,10 +378,11 @@ format_buf(unsigned char *cur, unsigned char *buf) {
 static void
 display_info(unsigned char coff, unsigned rpos) {
     static char buf[256] = { 0 };
-    char err = unlikely(access(iend) == NULL) ? '!' : ' ';
+    char err = unlikely(access(icache_end) == NULL) ? '!' : ' ';
     snprintf(buf, 256, "choff:%*d \x19 pos:%*d \x19 cmd:%c%-14.*s \x19 "
                        "filename: %s",
-             3, coff, 3, rpos, err, (int)(cmdstr_end - cmdstr), cmdstr, fname);
+             3, coff, 3, rpos, err, (int)(cmdstr_end - cmdstr), cmdstr,
+             file_name);
     draw_cstr(xoff, yoff / 2, buf);
 }
 
@@ -406,10 +468,10 @@ key_nav(int k, int unused_attr f, int unused_attr s) {
         access(file_curs) = clamp(curr + stp, file_beg, file_end);
         break;
     case GLUT_KEY_LEFT:
-        access(file_curs) = clamp(curr + 1, file_beg, file_end);
+        access(file_curs) = clamp(curr - 1, file_beg, file_end);
         break;
     case GLUT_KEY_RIGHT:
-        access(file_curs) = clamp(curr - 1, file_beg, file_end);
+        access(file_curs) = clamp(curr + 1, file_beg, file_end);
         break;
     case GLUT_KEY_HOME:
         access(file_curs) = file_beg;
@@ -430,10 +492,13 @@ key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
             return;
         }
         *cmdstr_end++ = k;
-        iend = (instr *)icache_beg;
+        icache_end = (instr *)icache_beg;
         break;
     case 'Q':
         exit(EXIT_SUCCESS);
+    case 'S':
+        save_diff();
+        break;
     case 'o':
         access(choff) = choff + 1;
         break;
@@ -448,14 +513,14 @@ key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
         break;
     case KEY_ESCAPE:
         cmdstr_end = cmdstr;
-        iend = (instr *)icache_beg;
+        icache_end = (instr *)icache_beg;
         break;
     case KEY_ENTER:
-        iend = exec_cmd(curr);
+        icache_end = exec_cmd(curr, icache_end);
         break;
     case KEY_BACKSPACE:
     case KEY_DELETE:
-        iend = (instr *)icache_beg;
+        icache_end = (instr *)icache_beg;
         if (unlikely(--cmdstr_end < cmdstr)) {
             cmdstr_end = cmdstr;
         }
@@ -465,10 +530,10 @@ key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
 }
 
 static instr *
-exec_cmd(unsigned char *curr) {
+exec_cmd(unsigned char *curr, instr *iend) {
     if (unlikely(iend == NULL)) {
         return NULL;
-    } else if (iend == (instr *)icache_beg) {
+    } else if (unlikely(iend == (instr *)icache_beg)) {
         if ((iend = parse_cmd((instr *)icache_beg)) == NULL) {
             return NULL;
         }
@@ -539,7 +604,7 @@ strtobighex(char *strbeg, char **strend, unsigned char *hexout) {
     unsigned char curr = 0;
     while (true) {
         unsigned char c = *strbeg;
-        if (c >= '0' && c <= '9') {
+        if (likely(c >= '0' && c <= '9')) {
             c -= '0';
         } else if (c >= 'a' && c <= 'f') {
             c -= ('a' - 10);
@@ -562,7 +627,7 @@ strtobighex(char *strbeg, char **strend, unsigned char *hexout) {
 
 static unsigned char *
 exec_ilist(unsigned char *curr, instr *ibeg, instr *iend) {
-    while (ibeg != iend) {
+    while (likely(ibeg != iend)) {
         switch (ibeg->code) {
         case rep:
             for (long long i = 0; i < ibeg->imm; ++i) {
@@ -577,7 +642,7 @@ exec_ilist(unsigned char *curr, instr *ibeg, instr *iend) {
             curr = clamp(curr + ibeg->imm, file_beg, file_end);
             break;
         case wrt:
-        default:
+            write_payload(curr, (flxarr *)&ibeg->imm);
             break;
         }
         ibeg = next_instr(ibeg);
@@ -660,3 +725,104 @@ to_hex(unsigned char c) {
     return c - 10 + 'a';
 }
 
+static void
+write_payload(unsigned char *curr, flxarr *arr) {
+    patch_file(curr, arr);
+    stash_changes(curr - file_beg, arr);
+}
+
+static void
+patch_file(unsigned char *curr, flxarr *arr) {
+    long long nnibble = arr->size;
+    unsigned char *data = arr->arr;
+    long long bytes = nnibble / 2, rest = nnibble % 2;
+    for (long long i = 0; i < bytes; ++i) {
+        curr[i] = data[i];
+    }
+    if (rest) {
+        curr[bytes] = data[bytes] | (curr[bytes] & 0xf);
+    }
+}
+
+static void
+map_file_shr(bool shr) {
+    int perm = shr == true ? O_RDWR : O_RDONLY;
+    int flag = (shr == true ? MAP_SHARED : MAP_PRIVATE) | MAP_POPULATE;
+    if ((file_fd = open(file_name, perm)) == -1) {
+        err(1, "open");
+    }
+    if ((file_beg = mmap(NULL, file_len, PROT_WRITE | PROT_READ, flag, file_fd,
+                         0)) == MAP_FAILED) {
+        err(1, "mmap");
+    }
+    file_end = file_beg + file_len;
+}
+
+static void
+remap_shr(bool shr) {
+    munmap(file_beg, file_len);
+    close(file_fd);
+    map_file_shr(shr);
+}
+
+static void
+stash_changes(long long off, flxarr *arr) {
+    unsigned long long size_needed =
+                           sizeof(long long) + sizeof(arr) + arr->size,
+                       curr_size = (unsigned long long)(diff_end - diff_curs);
+    while (unlikely(curr_size < size_needed)) {
+        diff_end = grow_diff();
+    }
+    memcpy(diff_curs + sizeof(long long), arr, size_needed);
+    memcpy(diff_curs, &off, sizeof(long long));
+    diff_curs += size_needed;
+}
+
+static void
+commit_changes(void) {
+    long long *off = (long long *)diff_beg;
+    flxarr *arr = (flxarr *)(off + 1);
+    while (likely(arr->size != 0 && (unsigned char *)off < diff_end)) {
+        patch_file(file_beg + *off, arr);
+        off = (long long *)(arr->arr + arr->size);
+        arr = (flxarr *)(off + 1);
+    }
+}
+
+static void
+commit_changes_dirty(void) {
+    long long *off = (long long *)diff_beg;
+    flxarr *arr = (flxarr *)(off + 1);
+    while (likely(arr->size != 0 && (unsigned char *)off < diff_end)) {
+        if (file_beg + *off + arr->size > file_end ||
+            arr->arr + arr->size > diff_end) {
+            errx(1, "corrupt diff");
+        }
+        patch_file(file_beg + *off, arr);
+        off = (long long *)(arr->arr + arr->size);
+        arr = (flxarr *)(off + 1);
+    }
+}
+
+static void
+clean_diff(void) {
+    unlink(diff_name);
+}
+
+static void
+save_diff(void) {
+    unsigned long long pos = access(file_curs) - file_beg;
+    remap_shr(true);
+    commit_changes();
+    remap_shr(false);
+    access(file_curs) = file_beg + pos;
+}
+
+static unsigned char *
+grow_diff(void) {
+    ssize_t d;
+    if ((d = write(diff_fd, null, 4096)) == -1) {
+        err(1, "write");
+    }
+    return diff_beg + d;
+}
