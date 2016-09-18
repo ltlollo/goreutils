@@ -1,5 +1,6 @@
 // gcc self $cflags -lglut -lGL -lGLU -o hex
 
+#define _GNU_SOURCE
 #include <err.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -37,6 +38,7 @@
 #define cxsize(x) (sizeof(x) / sizeof(*x))
 #define cxlen(x) (cxsize(x) - 1)
 #define min(x, y) ((x) > (y) ? (y) : (x))
+#define max(x, y) ((x) < (y) ? (y) : (x))
 #define access(x) (*(volatile typeof(x) *)&(x))
 #define unused_attr __attribute__((unused))
 #define expect(x, v) __builtin_expect(x, v)
@@ -132,6 +134,7 @@ static inline void set_vec2(vec2 *, float, float);
 static inline void set_vec3(vec3 *, float, float, float);
 static inline void *clamp(void *, void *, void *);
 static inline long long clampll(long long, long long, long long);
+static inline unsigned long long nbyte(long long nnibble);
 static inline unsigned char to_hex(unsigned char c);
 static inline instr *next_instr(instr *);
 static inline GLuint build_shader(const char *, int);
@@ -156,7 +159,7 @@ static unsigned char *exec_ilist(unsigned char *, instr *, instr *);
 
 static void setup_diff(void);
 static void remap_shr(bool);
-static unsigned char *grow_diff(void);
+static unsigned long long grow_diff(unsigned long long);
 static void commit_changes_dirty(void);
 static void commit_changes(void);
 static void write_payload(unsigned char *, flxarr *);
@@ -241,6 +244,8 @@ main(int argc, char *argv[]) {
 static void
 setup_diff(void) {
     struct stat sb;
+    bool dirty = true;
+    ssize_t initd;
 
     if ((diff_name = (char *)malloc(sizeof(DIFF_PRE) + strlen(file_name))) ==
         NULL) {
@@ -256,22 +261,27 @@ setup_diff(void) {
         err(1, "fstat");
     }
     diff_len = sb.st_size;
-    if ((diff_beg = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED,
+    if (diff_len == 0) {
+        initd = write(diff_fd, null, 4096);
+        if (initd <= 0) {
+            err(1, "write");
+        }
+        diff_len = initd;
+        dirty = false;
+    }
+    if ((diff_beg = mmap(NULL, diff_len, PROT_READ | PROT_WRITE, MAP_SHARED,
                          diff_fd, 0)) == MAP_FAILED) {
         err(1, "mmap");
     }
     diff_end = diff_beg + diff_len;
-    if (diff_len == 0) {
-        diff_end = grow_diff();
-        diff_curs = diff_beg;
-    } else {
+    if (dirty == true) {
         remap_shr(true);
         commit_changes_dirty();
         remap_shr(false);
         memset(diff_beg, 0, diff_len);
-        diff_curs = diff_beg;
         file_curs = file_beg;
     }
+    diff_curs = diff_beg;
     atexit(clean_diff);
 }
 
@@ -682,6 +692,11 @@ set_vec3(vec3 *v, float x, float y, float z) {
     v->z = z;
 }
 
+static inline unsigned long long
+nbyte(long long nnibble) {
+    return nnibble / 2 + nnibble % 2;
+}
+
 static inline void *
 clamp(void *ptr, void *llimit, void *rlimit) {
     if (unlikely(ptr < llimit)) {
@@ -765,27 +780,48 @@ remap_shr(bool shr) {
     map_file_shr(shr);
 }
 
+static unsigned long long
+grow_diff(unsigned long long size) {
+    ssize_t d;
+    if ((d = write(diff_fd, null, 4096)) == -1) {
+        err(1, "write");
+    }
+    if ((diff_beg = mremap(diff_beg, size, size + d, MREMAP_MAYMOVE)) ==
+        MAP_FAILED) {
+        err(1, "mremap");
+    }
+    return size + d;
+}
+
 static void
 stash_changes(long long off, flxarr *arr) {
-    unsigned long long size_needed =
-                           sizeof(long long) + sizeof(arr) + arr->size,
-                       curr_size = (unsigned long long)(diff_end - diff_curs);
-    while (unlikely(curr_size < size_needed)) {
-        diff_end = grow_diff();
+    unsigned long long size = nbyte(arr->size);
+    unsigned long long diff_needed = sizeof(long long) + sizeof(arr) + size;
+    unsigned long long curs_pos = diff_curs - diff_beg,
+                       curr_size = diff_end - diff_beg;
+
+    while (unlikely(curs_pos + diff_needed > curr_size)) {
+        curr_size = grow_diff(curr_size);
     }
-    memcpy(diff_curs + sizeof(long long), arr, size_needed);
+    diff_curs = diff_beg + curs_pos;
     memcpy(diff_curs, &off, sizeof(long long));
-    diff_curs += size_needed;
+    memcpy(diff_curs + sizeof(long long), arr,
+           diff_needed - sizeof(long long));
+
+    diff_curs += diff_needed;
+    diff_end = diff_beg + curr_size;
 }
 
 static void
 commit_changes(void) {
     long long *off = (long long *)diff_beg;
     flxarr *arr = (flxarr *)(off + 1);
-    while (likely(arr->size != 0 && (unsigned char *)off < diff_end)) {
+    unsigned long long size = nbyte(arr->size);
+    while (likely(size != 0 && (unsigned char *)off < diff_end)) {
         patch_file(file_beg + *off, arr);
-        off = (long long *)(arr->arr + arr->size);
+        off = (long long *)(arr->arr + size);
         arr = (flxarr *)(off + 1);
+        size = nbyte(arr->size);
     }
 }
 
@@ -793,14 +829,16 @@ static void
 commit_changes_dirty(void) {
     long long *off = (long long *)diff_beg;
     flxarr *arr = (flxarr *)(off + 1);
-    while (likely(arr->size != 0 && (unsigned char *)off < diff_end)) {
-        if (file_beg + *off + arr->size > file_end ||
-            arr->arr + arr->size > diff_end) {
+    unsigned long long size = nbyte(arr->size);
+    while (likely(size != 0 && (unsigned char *)off < diff_end)) {
+        if (unlikely(file_beg + *off + size > file_end ||
+                     arr->arr + size > diff_end)) {
             errx(1, "corrupt diff");
         }
         patch_file(file_beg + *off, arr);
-        off = (long long *)(arr->arr + arr->size);
+        off = (long long *)(arr->arr + size);
         arr = (flxarr *)(off + 1);
+        size = nbyte(arr->size);
     }
 }
 
@@ -816,13 +854,4 @@ save_diff(void) {
     commit_changes();
     remap_shr(false);
     access(file_curs) = file_beg + pos;
-}
-
-static unsigned char *
-grow_diff(void) {
-    ssize_t d;
-    if ((d = write(diff_fd, null, 4096)) == -1) {
-        err(1, "write");
-    }
-    return diff_beg + d;
 }
