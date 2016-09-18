@@ -46,7 +46,7 @@
 #define likely(x) expect(!!(x), 1)
 #define str(x) #x
 #define tok(x) str(x)
-#define perr(x) fwrite(x, 1, cxlen(x), stderr);
+#define perr(x) fwrite(x, 1, cxlen(x), stderr)
 #define fail(x)                                                               \
     do {                                                                      \
         perr(x);                                                              \
@@ -79,11 +79,11 @@ typedef enum { rep = 176, jmp = 11, wrt = 186, go = 190 } op;
 typedef struct {
     op code;
     long long imm;
-    unsigned char arr[];
+    unsigned char data[];
 } instr;
 typedef struct {
     long long size;
-    unsigned char arr[];
+    unsigned char data[];
 } flxarr;
 
 static int file_fd, diff_fd;
@@ -157,6 +157,7 @@ static instr *parse_cmd(instr *);
 static instr *exec_cmd(unsigned char *, instr *);
 static unsigned char *exec_ilist(unsigned char *, instr *, instr *);
 
+static void setup_file(void);
 static void setup_diff(void);
 static void remap_shr(bool);
 static unsigned long long grow_diff(unsigned long long);
@@ -173,22 +174,9 @@ main(int argc, char *argv[]) {
     if (argc - 1 != 1) {
         errx(1, "not enough arguments");
     }
-    if ((file_fd = open((file_name = argv[1]), O_RDONLY)) == -1) {
-        err(1, "open");
-    }
-    struct stat sb;
-    if (fstat(file_fd, &sb) == -1) {
-        err(1, "fstat");
-    }
-    file_len = sb.st_size;
-    if ((file_beg = mmap(NULL, file_len, PROT_READ | PROT_WRITE,
-                         MAP_PRIVATE | MAP_POPULATE, file_fd, 0)) ==
-        MAP_FAILED) {
-        err(1, "mmap");
-    }
-    file_curs = file_beg;
-    file_end = file_beg + file_len;
+    file_name = argv[1];
 
+    setup_file();
     setup_diff();
 
     glutInit(&argc, argv);
@@ -239,6 +227,25 @@ main(int argc, char *argv[]) {
     glutSpecialFunc(key_nav);
     glutMainLoop();
     return 0;
+}
+
+static void
+setup_file(void) {
+    if ((file_fd = open(file_name, O_RDONLY)) == -1) {
+        err(1, "open");
+    }
+    struct stat sb;
+    if (fstat(file_fd, &sb) == -1) {
+        err(1, "fstat");
+    }
+    file_len = sb.st_size;
+    if ((file_beg = mmap(NULL, file_len, PROT_READ | PROT_WRITE,
+                         MAP_PRIVATE | MAP_POPULATE, file_fd, 0)) ==
+        MAP_FAILED) {
+        err(1, "mmap");
+    }
+    file_curs = file_beg;
+    file_end = file_beg + file_len;
 }
 
 static void
@@ -568,7 +575,7 @@ parse_cmd(instr *istream) {
             goto PARSE_RET;
         case 'w':
             istream->code = wrt;
-            istream->imm = strtobighex(cmd + 1, &cmdcurs, istream->arr);
+            istream->imm = strtobighex(cmd + 1, &cmdcurs, istream->data);
             debug_assert(cmdcurs < cmdstr + sizeof(cmdstr));
             if (cmdcurs == cmd + 1) {
                 return NULL;
@@ -665,7 +672,7 @@ next_instr(instr *i) {
     unsigned long long nnibble;
     if (unlikely(i->code == wrt)) {
         nnibble = i->imm;
-        return (instr *)i->arr + (nnibble + 1) / 2;
+        return (instr *)i->data + (nnibble + 1) / 2;
     }
     return i + 1;
 }
@@ -674,6 +681,7 @@ static inline float
 nx(float f) {
     return 2.0 * f - 1.0;
 }
+
 static inline float
 ny(float f) {
     return 1.0 - f;
@@ -749,7 +757,7 @@ write_payload(unsigned char *curr, flxarr *arr) {
 static void
 patch_file(unsigned char *curr, flxarr *arr) {
     long long nnibble = arr->size;
-    unsigned char *data = arr->arr;
+    unsigned char *data = arr->data;
     long long bytes = nnibble / 2, rest = nnibble % 2;
     for (long long i = 0; i < bytes; ++i) {
         curr[i] = data[i];
@@ -795,18 +803,18 @@ grow_diff(unsigned long long size) {
 
 static void
 stash_changes(long long off, flxarr *arr) {
-    unsigned long long size = nbyte(arr->size);
-    unsigned long long diff_needed = sizeof(long long) + sizeof(arr) + size;
-    unsigned long long curs_pos = diff_curs - diff_beg,
+    unsigned long long size = nbyte(arr->size),
+                       diff_needed = sizeof(long long) + sizeof(arr) + size,
+                       curs_pos = diff_curs - diff_beg,
                        curr_size = diff_end - diff_beg;
-
     while (unlikely(curs_pos + diff_needed > curr_size)) {
         curr_size = grow_diff(curr_size);
     }
     diff_curs = diff_beg + curs_pos;
-    memcpy(diff_curs, &off, sizeof(long long));
+
     memcpy(diff_curs + sizeof(long long), arr,
            diff_needed - sizeof(long long));
+    memcpy(diff_curs, &off, sizeof(long long));
 
     diff_curs += diff_needed;
     diff_end = diff_beg + curr_size;
@@ -819,7 +827,7 @@ commit_changes(void) {
     unsigned long long size = nbyte(arr->size);
     while (likely(size != 0 && (unsigned char *)off < diff_end)) {
         patch_file(file_beg + *off, arr);
-        off = (long long *)(arr->arr + size);
+        off = (long long *)(arr->data + size);
         arr = (flxarr *)(off + 1);
         size = nbyte(arr->size);
     }
@@ -832,11 +840,11 @@ commit_changes_dirty(void) {
     unsigned long long size = nbyte(arr->size);
     while (likely(size != 0 && (unsigned char *)off < diff_end)) {
         if (unlikely(file_beg + *off + size > file_end ||
-                     arr->arr + size > diff_end)) {
+                     arr->data + size > diff_end)) {
             errx(1, "corrupt diff");
         }
         patch_file(file_beg + *off, arr);
-        off = (long long *)(arr->arr + size);
+        off = (long long *)(arr->data + size);
         arr = (flxarr *)(off + 1);
         size = nbyte(arr->size);
     }
