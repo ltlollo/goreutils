@@ -40,7 +40,7 @@
 #define min(x, y) ((x) > (y) ? (y) : (x))
 #define max(x, y) ((x) < (y) ? (y) : (x))
 #define access(x) (*(volatile typeof(x) *)&(x))
-#define unused_attr __attribute__((unused))
+#define attr(...) __attribute__((__VA_ARGS__))
 #define expect(x, v) __builtin_expect(x, v)
 #define unlikely(x) expect(!!(x), 0)
 #define likely(x) expect(!!(x), 1)
@@ -109,7 +109,7 @@ static char icache_beg[MXCMD * sizeof(instr)];
 static atomic(instr *) icache_end = (instr *)icache_beg;
 
 static const int xoff = 5, yoff = 13 * 2;
-static const int hfont = 13, unused_attr wfont = 8;
+static const int hfont = 13, attr(unused) wfont = 8;
 static const float nch = cxlen(MODEL) + 2 * 16;
 static const float bg[3] = { 0.1, 0.1, 0.1 };
 static const char *vsh = "\n#version 130"
@@ -138,7 +138,8 @@ static inline unsigned long long nbyte(long long nnibble);
 static inline unsigned char to_hex(unsigned char c);
 static inline instr *next_instr(instr *);
 static inline GLuint build_shader(const char *, int);
-static void unused_attr check_shader(GLuint);
+static void attr(unused) check_shader(GLuint);
+static bool should_merge();
 
 static long long strtobighex(char *, char **, unsigned char *);
 static void resize(int, int);
@@ -282,9 +283,13 @@ setup_diff(void) {
     }
     diff_end = diff_beg + diff_len;
     if (dirty == true) {
-        remap_shr(true);
-        commit_changes_dirty();
-        remap_shr(false);
+        bool not_empyty = ((diff_len > 2 * sizeof(long long) + 1) &&
+                           ((long long *)(diff_beg))[1] != 0);
+        if (not_empyty && should_merge()) {
+            remap_shr(true);
+            commit_changes_dirty();
+            remap_shr(false);
+        }
         memset(diff_beg, 0, diff_len);
         file_curs = file_beg;
     }
@@ -449,7 +454,7 @@ build_shader(const char *src, int type) {
     return sh;
 }
 
-static void unused_attr
+static void attr(unused)
 check_shader(GLuint shader) {
     GLint len, res;
     char *log;
@@ -466,7 +471,7 @@ check_shader(GLuint shader) {
 }
 
 static void
-key_nav(int k, int unused_attr f, int unused_attr s) {
+key_nav(int k, int attr(unused) f, int attr(unused) s) {
     unsigned char *curr = access(file_curs);
     unsigned stp = nlines / 2 * 16;
     switch (k) {
@@ -501,7 +506,7 @@ key_nav(int k, int unused_attr f, int unused_attr s) {
 }
 
 static void
-key_ascii(unsigned char k, int unused_attr f, int unused_attr s) {
+key_ascii(unsigned char k, int attr(unused) f, int attr(unused) s) {
     unsigned char *curr = access(file_curs);
     switch (k) {
     default:
@@ -862,4 +867,36 @@ save_diff(void) {
     commit_changes();
     remap_shr(false);
     access(file_curs) = file_beg + pos;
+}
+
+static bool
+should_merge() {
+    size_t len = 0;
+    ssize_t read;
+    char *strbuf = NULL;
+    bool ans = true;
+    do {
+        perr("unstashed changes present, merge them? {y/n}: ");
+        if ((read = getline(&strbuf, &len, stdin)) == -1) {
+            err(1, "getline");
+        }
+        if (unlikely(read != 2)) {
+            continue;
+        }
+        switch (expect(*strbuf, 'y')) {
+        default:
+            continue;
+        case 'y':
+        case 'Y':
+            ans = true;
+            goto RET;
+        case 'n':
+        case 'N':
+            ans = false;
+            goto RET;
+        }
+    } while(1);
+RET:
+    free(strbuf);
+    return ans;
 }
