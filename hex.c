@@ -135,12 +135,12 @@ static inline void set_vec2(vec2 *, float, float);
 static inline void set_vec3(vec3 *, float, float, float);
 static inline void *clamp(void *, void *, void *);
 static inline long long clampll(long long, long long, long long);
-static inline unsigned long long nbyte(long long nnibble);
+static inline unsigned long long nbyte(long long);
 static inline unsigned char to_hex(unsigned char c);
 static inline instr *next_instr(instr *);
 static inline GLuint build_shader(const char *, int);
 static void attr(unused) check_shader(GLuint);
-static ans should_merge();
+static ans should_merge(void);
 
 static long long strtobighex(char *, char **, unsigned char *);
 static void resize(int, int);
@@ -167,7 +167,7 @@ static void commit_changes_dirty(void);
 static void commit_changes(void);
 static void write_payload(unsigned char *, flxarr *);
 static void patch_file(unsigned char *, flxarr *);
-static void stash_changes(long long off, flxarr *arr);
+static void stash_changes(long long, flxarr *);
 static void save_diff(void);
 static void clean_diff(void);
 
@@ -853,7 +853,7 @@ save_diff(void) {
 }
 
 static ans
-should_merge() {
+should_merge(void) {
     size_t len = 0;
     ssize_t read;
     char *strbuf = NULL;
