@@ -70,9 +70,7 @@
     } while (0)
 #else
 #define debug_assert(x) (void)(x)
-#define debug_expr(x)                                                         \
-    do {                                                                      \
-    } while (0)
+#define debug_expr(x)
 #endif
 
 typedef struct { float x, y; } vec2;
