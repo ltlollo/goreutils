@@ -44,6 +44,8 @@
 #define expect(x, v) __builtin_expect(x, v)
 #define unlikely(x) expect(!!(x), 0)
 #define likely(x) expect(!!(x), 1)
+#define unlikely_if(x) if (unlikely(x))
+#define likely_if(x) if (likely(x))
 #define str(x) #x
 #define tok(x) str(x)
 #define perr(x) fwrite(x, 1, cxlen(x), stderr)
@@ -61,7 +63,7 @@
 #define debug_assert(x)                                                       \
     do {                                                                      \
         __asm__ __volatile__("" : : : "memory");                              \
-        if (unlikely(!(x))) {                                                 \
+        unlikely_if((!(x))) {                                                 \
             fail("err: (" str(x) ") failed at line " tok(                     \
                 __LINE__) " in " tok(__FILE__) "\n");                         \
         }                                                                     \
@@ -76,6 +78,7 @@
 typedef struct { float x, y; } vec2;
 typedef struct { float x, y, z; } vec3;
 typedef enum { rep = 176, jmp = 11, wrt = 186, go = 190 } op;
+typedef enum { y, n, d } ans;
 typedef struct {
     op code;
     long long imm;
@@ -139,7 +142,7 @@ static inline unsigned char to_hex(unsigned char c);
 static inline instr *next_instr(instr *);
 static inline GLuint build_shader(const char *, int);
 static void attr(unused) check_shader(GLuint);
-static bool should_merge();
+static ans should_merge();
 
 static long long strtobighex(char *, char **, unsigned char *);
 static void resize(int, int);
@@ -172,9 +175,7 @@ static void clean_diff(void);
 
 int
 main(int argc, char *argv[]) {
-    if (argc - 1 != 1) {
-        errx(1, "not enough arguments");
-    }
+    unlikely_if(argc - 1 != 1) { errx(1, "not enough arguments"); }
     file_name = argv[1];
 
     setup_file();
@@ -187,9 +188,7 @@ main(int argc, char *argv[]) {
     winx = glutGet(GLUT_SCREEN_WIDTH);
 
     nlines = winy / hfont - 1;
-    if (nlines > MXLINES || nlines < 4) {
-        errx(1, "too many lines");
-    }
+    unlikely_if(nlines > MXLINES || nlines < 4) { errx(1, "too many lines"); }
     nvx = nlines * 96;
     iy = 2.0f / (float)(nlines - 3);
 
@@ -232,17 +231,15 @@ main(int argc, char *argv[]) {
 
 static void
 setup_file(void) {
-    if ((file_fd = open(file_name, O_RDONLY)) == -1) {
+    unlikely_if((file_fd = open(file_name, O_RDONLY)) == -1) {
         err(1, "open");
     }
     struct stat sb;
-    if (fstat(file_fd, &sb) == -1) {
-        err(1, "fstat");
-    }
+    unlikely_if(fstat(file_fd, &sb) == -1) { err(1, "fstat"); }
     file_len = sb.st_size;
-    if ((file_beg = mmap(NULL, file_len, PROT_READ | PROT_WRITE,
-                         MAP_PRIVATE | MAP_POPULATE, file_fd, 0)) ==
-        MAP_FAILED) {
+    unlikely_if((file_beg = mmap(NULL, file_len, PROT_READ | PROT_WRITE,
+                                 MAP_PRIVATE | MAP_POPULATE, file_fd, 0)) ==
+                MAP_FAILED) {
         err(1, "mmap");
     }
     file_curs = file_beg;
@@ -255,44 +252,51 @@ setup_diff(void) {
     bool dirty = true;
     ssize_t initd;
 
-    if ((diff_name = (char *)malloc(sizeof(DIFF_PRE) + strlen(file_name))) ==
-        NULL) {
+    unlikely_if((diff_name = (char *)malloc(sizeof(DIFF_PRE) +
+                                            strlen(file_name))) == NULL) {
         err(1, "malloc");
     }
     memcpy(diff_name, DIFF_PRE, cxlen(DIFF_PRE));
     strcpy(diff_name + cxlen(DIFF_PRE), file_name);
 
-    if ((diff_fd = open(diff_name, O_RDWR | O_CREAT, 0644)) == -1) {
+    unlikely_if((diff_fd = open(diff_name, O_RDWR | O_CREAT, 0644)) == -1) {
         err(1, "open");
     }
-    if (fstat(diff_fd, &sb) == -1) {
-        err(1, "fstat");
-    }
+    unlikely_if(fstat(diff_fd, &sb) == -1) { err(1, "fstat"); }
+
     diff_len = sb.st_size;
-    if (diff_len == 0) {
+    likely_if(diff_len == 0) {
         initd = write(diff_fd, null, 4096);
-        if (initd <= 0) {
-            err(1, "write");
-        }
+        unlikely_if(initd <= 0) { err(1, "write"); }
         diff_len = initd;
         dirty = false;
     }
-    if ((diff_beg = mmap(NULL, diff_len, PROT_READ | PROT_WRITE, MAP_SHARED,
-                         diff_fd, 0)) == MAP_FAILED) {
+    unlikely_if((diff_beg = mmap(NULL, diff_len, PROT_READ | PROT_WRITE,
+                                 MAP_SHARED, diff_fd, 0)) == MAP_FAILED) {
         err(1, "mmap");
     }
     diff_end = diff_beg + diff_len;
-    if (dirty == true) {
+    unlikely_if(dirty == true) {
         bool not_empyty = ((diff_len > 2 * sizeof(long long) + 1) &&
                            ((long long *)(diff_beg))[1] != 0);
-        if (not_empyty && should_merge()) {
-            remap_shr(true);
-            commit_changes_dirty();
-            remap_shr(false);
+        unlikely_if(not_empyty) {
+            switch(should_merge()) {
+            case y:
+                remap_shr(true);
+                commit_changes_dirty();
+                remap_shr(false);
+                break;
+            case n:
+                break;
+            case d:
+                commit_changes_dirty();
+                goto RET;
+            }
         }
         memset(diff_beg, 0, diff_len);
         file_curs = file_beg;
     }
+RET:
     diff_curs = diff_beg;
     atexit(clean_diff);
 }
@@ -359,9 +363,7 @@ display(void) {
             strend[j] += charoff;
         }
         for (int j = 0; j < 16; ++j) {
-            if (unlikely(!strend[j])) {
-                strend[j] = ' ';
-            }
+            unlikely_if(!strend[j]) { strend[j] = ' '; }
         }
         draw_arr(xoff, y, buf, cxlen(MODEL) + rest);
     }
@@ -454,8 +456,7 @@ build_shader(const char *src, int type) {
     return sh;
 }
 
-static void attr(unused)
-check_shader(GLuint shader) {
+static void attr(unused) check_shader(GLuint shader) {
     GLint len, res;
     char *log;
     glGetShaderiv(shader, GL_COMPILE_STATUS, &res);
@@ -510,14 +511,14 @@ key_ascii(unsigned char k, int attr(unused) f, int attr(unused) s) {
     unsigned char *curr = access(file_curs);
     switch (k) {
     default:
-        if (unlikely(cmdstr_end == cmdstr + MXCMD)) {
-            return;
-        }
+        unlikely_if(cmdstr_end == cmdstr + MXCMD) { return; }
         *cmdstr_end++ = k;
         icache_end = (instr *)icache_beg;
         break;
     case 'Q':
         exit(EXIT_SUCCESS);
+    case 'K':
+        _exit(EXIT_FAILURE);
     case 'S':
         save_diff();
         break;
@@ -543,9 +544,7 @@ key_ascii(unsigned char k, int attr(unused) f, int attr(unused) s) {
     case KEY_BACKSPACE:
     case KEY_DELETE:
         icache_end = (instr *)icache_beg;
-        if (unlikely(--cmdstr_end < cmdstr)) {
-            cmdstr_end = cmdstr;
-        }
+        unlikely_if(--cmdstr_end < cmdstr) { cmdstr_end = cmdstr; }
         break;
     }
     glutPostRedisplay();
@@ -553,9 +552,8 @@ key_ascii(unsigned char k, int attr(unused) f, int attr(unused) s) {
 
 static instr *
 exec_cmd(unsigned char *curr, instr *iend) {
-    if (unlikely(iend == NULL)) {
-        return NULL;
-    } else if (unlikely(iend == (instr *)icache_beg)) {
+    unlikely_if(iend == NULL) { return NULL; }
+    else unlikely_if(iend == (instr *)icache_beg) {
         if ((iend = parse_cmd((instr *)icache_beg)) == NULL) {
             return NULL;
         }
@@ -592,23 +590,18 @@ parse_cmd(instr *istream) {
         case 'r':
             istream->imm = strtoll(cmd + 1, &cmdcurs, 16);
 
-            if (unlikely(cmdcurs == cmd + 1)) {
-                return NULL;
-            }
+            unlikely_if(cmdcurs == cmd + 1) { return NULL; }
             cmd = cmdcurs;
             if (c == 'j') {
                 istream->code = jmp;
-                if (unlikely(istream->imm == 0)) {
-                    continue;
-                }
+                unlikely_if(istream->imm == 0) { continue; }
             } else if (c == 'g') {
                 istream->code = go;
                 istream->imm = clampll(istream->imm, 0, file_end - file_beg);
             } else if (c == 'r') {
                 istream->code = rep;
-                if (unlikely(istream->imm == 0)) {
-                    zrep = istream;
-                } else if (unlikely(istream->imm == 1)) {
+                unlikely_if(istream->imm == 0) { zrep = istream; }
+                else unlikely_if(istream->imm == 1) {
                     continue;
                 }
             }
@@ -626,11 +619,11 @@ strtobighex(char *strbeg, char **strend, unsigned char *hexout) {
     unsigned char curr = 0;
     while (true) {
         unsigned char c = *strbeg;
-        if (likely(c >= '0' && c <= '9')) {
-            c -= '0';
-        } else if (c >= 'a' && c <= 'f') {
+        likely_if(c >= '0' && c <= '9') { c -= '0'; }
+        else if (c >= 'a' && c <= 'f') {
             c -= ('a' - 10);
-        } else {
+        }
+        else {
             break;
         }
         if (++nnibble % 2 == 0) {
@@ -675,7 +668,7 @@ exec_ilist(unsigned char *curr, instr *ibeg, instr *iend) {
 static inline instr *
 next_instr(instr *i) {
     unsigned long long nnibble;
-    if (unlikely(i->code == wrt)) {
+    unlikely_if(i->code == wrt) {
         nnibble = i->imm;
         return (instr *)i->data + (nnibble + 1) / 2;
     }
@@ -712,18 +705,16 @@ nbyte(long long nnibble) {
 
 static inline void *
 clamp(void *ptr, void *llimit, void *rlimit) {
-    if (unlikely(ptr < llimit)) {
-        return llimit;
-    } else if (unlikely(ptr > rlimit)) {
+    unlikely_if(ptr < llimit) { return llimit; }
+    else unlikely_if(ptr > rlimit) {
         return rlimit;
     }
     return ptr;
 }
 static inline long long
 clampll(long long u, long long llimit, long long rlimit) {
-    if (unlikely(u < llimit)) {
-        return llimit;
-    } else if (unlikely(u > rlimit)) {
+    unlikely_if(u < llimit) { return llimit; }
+    else unlikely_if(u > rlimit) {
         return rlimit;
     }
     return u;
@@ -747,9 +738,7 @@ draw_cstr(float x, float y, char *str) {
 
 static inline unsigned char
 to_hex(unsigned char c) {
-    if (likely(c < 10)) {
-        return c + '0';
-    }
+    likely_if(c < 10) { return c + '0'; }
     return c - 10 + 'a';
 }
 
@@ -776,11 +765,9 @@ static void
 map_file_shr(bool shr) {
     int perm = shr == true ? O_RDWR : O_RDONLY;
     int flag = (shr == true ? MAP_SHARED : MAP_PRIVATE) | MAP_POPULATE;
-    if ((file_fd = open(file_name, perm)) == -1) {
-        err(1, "open");
-    }
-    if ((file_beg = mmap(NULL, file_len, PROT_WRITE | PROT_READ, flag, file_fd,
-                         0)) == MAP_FAILED) {
+    unlikely_if((file_fd = open(file_name, perm)) == -1) { err(1, "open"); }
+    unlikely_if((file_beg = mmap(NULL, file_len, PROT_WRITE | PROT_READ, flag,
+                                 file_fd, 0)) == MAP_FAILED) {
         err(1, "mmap");
     }
     file_end = file_beg + file_len;
@@ -796,11 +783,9 @@ remap_shr(bool shr) {
 static unsigned long long
 grow_diff(unsigned long long size) {
     ssize_t d;
-    if ((d = write(diff_fd, null, 4096)) == -1) {
-        err(1, "write");
-    }
-    if ((diff_beg = mremap(diff_beg, size, size + d, MREMAP_MAYMOVE)) ==
-        MAP_FAILED) {
+    unlikely_if((d = write(diff_fd, null, 4096)) == -1) { err(1, "write"); }
+    unlikely_if((diff_beg = mremap(diff_beg, size, size + d,
+                                   MREMAP_MAYMOVE)) == MAP_FAILED) {
         err(1, "mremap");
     }
     return size + d;
@@ -844,8 +829,8 @@ commit_changes_dirty(void) {
     flxarr *arr = (flxarr *)(off + 1);
     unsigned long long size = nbyte(arr->size);
     while (likely(size != 0 && (unsigned char *)off < diff_end)) {
-        if (unlikely(file_beg + *off + size > file_end ||
-                     arr->data + size > diff_end)) {
+        unlikely_if(file_beg + *off + size > file_end ||
+                    arr->data + size > diff_end) {
             errx(1, "corrupt diff");
         }
         patch_file(file_beg + *off, arr);
@@ -869,34 +854,40 @@ save_diff(void) {
     access(file_curs) = file_beg + pos;
 }
 
-static bool
+static ans
 should_merge() {
     size_t len = 0;
     ssize_t read;
     char *strbuf = NULL;
-    bool ans = true;
+    ans res = y;
     do {
-        perr("unstashed changes present, merge them? {y/n}: ");
-        if ((read = getline(&strbuf, &len, stdin)) == -1) {
+        perr("backup with unstashed changes present, merge/display them?"
+             "\n\ty: merge and delete the backup"
+             "\n\tn: do not merge and delete the backup"
+             "\n\td: load changes and display"
+             "\n{y|n|d}: ");
+        unlikely_if ((read = getline(&strbuf, &len, stdin)) == -1) {
             err(1, "getline");
         }
-        if (unlikely(read != 2)) {
-            continue;
-        }
+        unlikely_if(read != 2) { continue; }
         switch (expect(*strbuf, 'y')) {
         default:
             continue;
         case 'y':
         case 'Y':
-            ans = true;
+            res = y;
             goto RET;
         case 'n':
         case 'N':
-            ans = false;
+            res = n;
+            goto RET;
+        case 'd':
+        case 'D':
+            res = d;
             goto RET;
         }
-    } while(1);
+    } while (1);
 RET:
     free(strbuf);
-    return ans;
+    return res;
 }
