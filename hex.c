@@ -42,26 +42,15 @@
 #define likely(x) expect(!!(x), 1)
 #define unlikely_if(x) if (unlikely(x))
 #define likely_if(x) if (likely(x))
-#define str(x) #x
-#define tok(x) str(x)
-#define perr(x) fwrite(x, 1, cxlen(x), stderr)
-#define fail(x)                                                               \
-    do {                                                                      \
-        perr(x);                                                              \
-        exit(EXIT_FAILURE);                                                   \
-    } while (0)
 
 #ifndef NDEBUG
-#define debug_expr(x)                                                         \
-    do {                                                                      \
-        (void)(x);                                                            \
-    } while (0);
+#define debug_expr(x) (x)
 #define debug_assert(x)                                                       \
     do {                                                                      \
         __asm__ __volatile__("" : : : "memory");                              \
-        unlikely_if((!(x))) {                                                 \
-            fail("err: (" str(x) ") failed at line " tok(                     \
-                __LINE__) " in " tok(__FILE__) "\n");                         \
+        unlikely_if(!(x)) {                                                   \
+            errx(1, "err: (%s) failed at line %d in %s", #x, __LINE__,        \
+                 __FILE__);                                                   \
         }                                                                     \
     } while (0)
 #else
@@ -552,7 +541,7 @@ exec_cmd(unsigned char *curr, instr *iend) {
             return NULL;
         }
     }
-    debug_assert(iend < (instr *)icache_beg + sizeof(icache_beg));
+    debug_assert((char *)iend < icache_beg + sizeof(icache_beg));
     access(file_curs) = exec_ilist(curr, (instr *)icache_beg, iend);
     return iend;
 }
@@ -563,7 +552,6 @@ parse_cmd(instr *istream) {
     instr *zrep = NULL;
     debug_assert(cmdstr_end < cmdstr + sizeof(cmdstr));
     *cmdstr_end = '\0';
-
     while (true) {
         switch ((c = *cmd)) {
         default:
@@ -583,7 +571,6 @@ parse_cmd(instr *istream) {
         case 'g':
         case 'r':
             istream->imm = strtoll(cmd + 1, &cmdcurs, 16);
-
             unlikely_if(cmdcurs == cmd + 1) { return NULL; }
             cmd = cmdcurs;
             if (c == 'j') {
@@ -855,11 +842,11 @@ should_merge(void) {
     char *strbuf = NULL;
     ans res = y;
     do {
-        perr("backup with unstashed changes present, merge/display them?"
-             "\n\ty: merge and delete the backup"
-             "\n\tn: do not merge and delete the backup"
-             "\n\td: load changes and display"
-             "\n{y|n|d}: ");
+        warnx("backup with unstashed changes present, merge/display them?"
+              "\n\ty: merge and delete the backup"
+              "\n\tn: do not merge and delete the backup"
+              "\n\td: load changes and display"
+              "\n{y|n|d}: ");
         unlikely_if ((read = getline(&strbuf, &len, stdin)) == -1) {
             err(1, "getline");
         }
