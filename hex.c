@@ -42,6 +42,14 @@
 #define likely(x) expect(!!(x), 1)
 #define unlikely_if(x) if (unlikely(x))
 #define likely_if(x) if (likely(x))
+#define str(x) #x
+#define tok(x) str(x)
+#define perr(x) fwrite(x, 1, cxlen(x), stderr)
+#define fail(x)                                                               \
+    do {                                                                      \
+        perr(x);                                                              \
+        exit(EXIT_FAILURE);                                                   \
+    } while (0)
 
 #ifndef NDEBUG
 #define debug_expr(x) (x)
@@ -842,11 +850,11 @@ should_merge(void) {
     char *strbuf = NULL;
     ans res = y;
     do {
-        warnx("backup with unstashed changes present, merge/display them?"
-              "\n\ty: merge and delete the backup"
-              "\n\tn: do not merge and delete the backup"
-              "\n\td: load changes and display"
-              "\n{y|n|d}: ");
+        perr("backup with unstashed changes present, merge/display them?"
+             "\n\ty: merge and delete the backup"
+             "\n\tn: do not merge and delete the backup"
+             "\n\td: load changes and display"
+             "\n{y|n|d}: ");
         unlikely_if ((read = getline(&strbuf, &len, stdin)) == -1) {
             err(1, "getline");
         }
