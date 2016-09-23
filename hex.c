@@ -57,8 +57,8 @@
     do {                                                                      \
         __asm__ __volatile__("" : : : "memory");                              \
         unlikely_if(!(x)) {                                                   \
-            errx(1, "err: (%s) failed at line %d in %s", #x, __LINE__,        \
-                 __FILE__);                                                   \
+            fail("err: (" str(x) ") failed at line " tok(                     \
+                __LINE__) " in " tok(__FILE__) "\n");                         \
         }                                                                     \
     } while (0)
 #else
@@ -70,6 +70,7 @@ typedef struct { float x, y; } vec2;
 typedef struct { float x, y, z; } vec3;
 typedef enum { rep = 176, jmp = 11, wrt = 186, go = 190 } op;
 typedef enum { y, n, d } ans;
+
 typedef struct {
     op code;
     long long imm;
@@ -164,8 +165,7 @@ static void stash_changes(long long, flxarr *);
 static void save_diff(void);
 static void clean_diff(void);
 
-int
-main(int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     unlikely_if(argc - 1 != 1) { errx(1, "not enough arguments"); }
     file_name = argv[1];
 
@@ -220,8 +220,7 @@ main(int argc, char *argv[]) {
     return 0;
 }
 
-static void
-setup_file(void) {
+static void setup_file(void) {
     unlikely_if((file_fd = open(file_name, O_RDONLY)) == -1) {
         err(1, "open");
     }
@@ -237,8 +236,7 @@ setup_file(void) {
     file_end = file_beg + file_len;
 }
 
-static void
-setup_diff(void) {
+static void setup_diff(void) {
     struct stat sb;
     bool dirty = true;
     ssize_t initd;
@@ -271,7 +269,7 @@ setup_diff(void) {
         bool not_empyty = ((diff_len > 2 * sizeof(long long) + 1) &&
                            ((long long *)(diff_beg))[1] != 0);
         unlikely_if(not_empyty) {
-            switch(should_merge()) {
+            switch (should_merge()) {
             case y:
                 remap_shr(true);
                 commit_changes_dirty();
@@ -292,8 +290,7 @@ RET:
     atexit(clean_diff);
 }
 
-static void
-resize(int width, int height) {
+static void resize(int width, int height) {
     const float ar = (float)width / (float)height;
     winx = width;
     winy = height;
@@ -311,8 +308,7 @@ resize(int width, int height) {
     glLoadIdentity();
 }
 
-static void
-setOrthographicProjection(void) {
+static void setOrthographicProjection(void) {
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
@@ -322,15 +318,13 @@ setOrthographicProjection(void) {
     glMatrixMode(GL_MODELVIEW);
 }
 
-static void
-resetPerspectiveProjection(void) {
+static void resetPerspectiveProjection(void) {
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
 }
 
-static void
-display(void) {
+static void display(void) {
     static unsigned char buf[cxlen(MODEL) + 16] = { 0 };
     unsigned char *curr = access(file_curs), *slice = curr;
     unsigned char charoff = access(choff);
@@ -364,8 +358,7 @@ display(void) {
     glutSwapBuffers();
 }
 
-static unsigned char *
-format_buf(unsigned char *cur, unsigned char *buf) {
+static unsigned char *format_buf(unsigned char *cur, unsigned char *buf) {
     size_t pos = cur - file_beg;
     for (int i = 0; i < 16; ++i) {
         *buf++ = to_hex((pos >> (16 - 1 - i) * 4) & 0xf);
@@ -390,8 +383,7 @@ format_buf(unsigned char *cur, unsigned char *buf) {
     return buf;
 }
 
-static void
-display_info(unsigned char coff, unsigned rpos) {
+static void display_info(unsigned char coff, unsigned rpos) {
     static char buf[256] = { 0 };
     char err = unlikely(access(icache_end) == NULL) ? '!' : ' ';
     snprintf(buf, 256, "choff:%*d \x19 pos:%*d \x19 cmd:%c%-14.*s \x19 "
@@ -401,8 +393,7 @@ display_info(unsigned char coff, unsigned rpos) {
     draw_cstr(xoff, yoff / 2, buf);
 }
 
-static void
-set_col_table(unsigned char *slice) {
+static void set_col_table(unsigned char *slice) {
     int i = 0;
     for (; i < nlines && slice < file_end; ++i, slice += 16) {
         for (int j = 0; j < 16; ++j) {
@@ -423,8 +414,7 @@ set_col_table(unsigned char *slice) {
     }
 }
 
-static void
-set_vrx_table(void) {
+static void set_vrx_table(void) {
     for (int j = 0; j < nlines; ++j) {
         for (int i = 0; i < 16; ++i) {
             size_t k = i * 6 + j * 96;
@@ -438,8 +428,7 @@ set_vrx_table(void) {
     }
 }
 
-static inline GLuint
-build_shader(const char *src, int type) {
+static inline GLuint build_shader(const char *src, int type) {
     GLuint sh = glCreateShader(type);
     glShaderSource(sh, 1, &src, NULL);
     glCompileShader(sh);
@@ -462,8 +451,7 @@ static void attr(unused) check_shader(GLuint shader) {
     }
 }
 
-static void
-key_nav(int k, int attr(unused) f, int attr(unused) s) {
+static void key_nav(int k, int attr(unused) f, int attr(unused) s) {
     unsigned char *curr = access(file_curs);
     unsigned stp = nlines / 2 * 16;
     switch (k) {
@@ -497,8 +485,8 @@ key_nav(int k, int attr(unused) f, int attr(unused) s) {
     glutPostRedisplay();
 }
 
-static void
-key_ascii(unsigned char k, int attr(unused) f, int attr(unused) s) {
+static void key_ascii(unsigned char k, int attr(unused) f,
+                      int attr(unused) s) {
     unsigned char *curr = access(file_curs);
     switch (k) {
     default:
@@ -509,7 +497,7 @@ key_ascii(unsigned char k, int attr(unused) f, int attr(unused) s) {
     case 'Q':
         exit(EXIT_SUCCESS);
     case 'K':
-        _exit(EXIT_FAILURE);
+        quick_exit(EXIT_FAILURE);
     case 'S':
         save_diff();
         break;
@@ -541,8 +529,7 @@ key_ascii(unsigned char k, int attr(unused) f, int attr(unused) s) {
     glutPostRedisplay();
 }
 
-static instr *
-exec_cmd(unsigned char *curr, instr *iend) {
+static instr *exec_cmd(unsigned char *curr, instr *iend) {
     unlikely_if(iend == NULL) { return NULL; }
     else unlikely_if(iend == (instr *)icache_beg) {
         if ((iend = parse_cmd((instr *)icache_beg)) == NULL) {
@@ -554,8 +541,7 @@ exec_cmd(unsigned char *curr, instr *iend) {
     return iend;
 }
 
-static instr *
-parse_cmd(instr *istream) {
+static instr *parse_cmd(instr *istream) {
     char *cmdcurs, *cmd = cmdstr, c;
     instr *zrep = NULL;
     debug_assert(cmdstr_end < cmdstr + sizeof(cmdstr));
@@ -602,8 +588,8 @@ PARSE_RET:
     return zrep ? zrep : istream;
 }
 
-static long long
-strtobighex(char *strbeg, char **strend, unsigned char *hexout) {
+static long long strtobighex(char *strbeg, char **strend,
+                             unsigned char *hexout) {
     long long nnibble = 0;
     unsigned char curr = 0;
     while (true) {
@@ -629,8 +615,8 @@ strtobighex(char *strbeg, char **strend, unsigned char *hexout) {
     return nnibble;
 }
 
-static unsigned char *
-exec_ilist(unsigned char *curr, instr *ibeg, instr *iend) {
+static unsigned char *exec_ilist(unsigned char *curr, instr *ibeg,
+                                 instr *iend) {
     while (likely(ibeg != iend)) {
         switch (ibeg->code) {
         case rep:
@@ -654,8 +640,7 @@ exec_ilist(unsigned char *curr, instr *ibeg, instr *iend) {
     return curr;
 }
 
-static inline instr *
-next_instr(instr *i) {
+static inline instr *next_instr(instr *i) {
     unsigned long long nnibble;
     unlikely_if(i->code == wrt) {
         nnibble = i->imm;
@@ -664,44 +649,34 @@ next_instr(instr *i) {
     return i + 1;
 }
 
-static inline float
-nx(float f) {
-    return 2.0 * f - 1.0;
-}
+static inline float nx(float f) { return 2.0 * f - 1.0; }
 
-static inline float
-ny(float f) {
-    return 1.0 - f;
-}
+static inline float ny(float f) { return 1.0 - f; }
 
-static inline void
-set_vec2(vec2 *v, float x, float y) {
+static inline void set_vec2(vec2 *v, float x, float y) {
     v->x = x;
     v->y = y;
 }
 
-static inline void
-set_vec3(vec3 *v, float x, float y, float z) {
+static inline void set_vec3(vec3 *v, float x, float y, float z) {
     v->x = x;
     v->y = y;
     v->z = z;
 }
 
-static inline unsigned long long
-nbyte(long long nnibble) {
+static inline unsigned long long nbyte(long long nnibble) {
     return nnibble / 2 + nnibble % 2;
 }
 
-static inline void *
-clamp(void *ptr, void *llimit, void *rlimit) {
+static inline void *clamp(void *ptr, void *llimit, void *rlimit) {
     unlikely_if(ptr < llimit) { return llimit; }
     else unlikely_if(ptr > rlimit) {
         return rlimit;
     }
     return ptr;
 }
-static inline long long
-clampll(long long u, long long llimit, long long rlimit) {
+static inline long long clampll(long long u, long long llimit,
+                                long long rlimit) {
     unlikely_if(u < llimit) { return llimit; }
     else unlikely_if(u > rlimit) {
         return rlimit;
@@ -709,36 +684,31 @@ clampll(long long u, long long llimit, long long rlimit) {
     return u;
 }
 
-static void
-draw_arr(float x, float y, unsigned char *str, size_t size) {
+static void draw_arr(float x, float y, unsigned char *str, size_t size) {
     glRasterPos2f(x, y);
     for (size_t i = 0; i < size; ++i) {
         glutBitmapCharacter(font, str[i]);
     }
 }
 
-static void
-draw_cstr(float x, float y, char *str) {
+static void draw_cstr(float x, float y, char *str) {
     glRasterPos2f(x, y);
     while (*str) {
         glutBitmapCharacter(font, *str++);
     }
 }
 
-static inline unsigned char
-to_hex(unsigned char c) {
+static inline unsigned char to_hex(unsigned char c) {
     likely_if(c < 10) { return c + '0'; }
     return c - 10 + 'a';
 }
 
-static void
-write_payload(unsigned char *curr, flxarr *arr) {
+static void write_payload(unsigned char *curr, flxarr *arr) {
     patch_file(curr, arr);
     stash_changes(curr - file_beg, arr);
 }
 
-static void
-patch_file(unsigned char *curr, flxarr *arr) {
+static void patch_file(unsigned char *curr, flxarr *arr) {
     long long nnibble = arr->size;
     unsigned char *data = arr->data;
     long long bytes = nnibble / 2, rest = nnibble % 2;
@@ -750,10 +720,9 @@ patch_file(unsigned char *curr, flxarr *arr) {
     }
 }
 
-static void
-map_file_shr(bool shr) {
-    int perm = shr == true ? O_RDWR : O_RDONLY;
-    int flag = (shr == true ? MAP_SHARED : MAP_PRIVATE) | MAP_POPULATE;
+static void map_file_shr(bool shr) {
+    int perm = shr ? O_RDWR : O_RDONLY;
+    int flag = (shr ? MAP_SHARED : MAP_PRIVATE) | MAP_POPULATE;
     unlikely_if((file_fd = open(file_name, perm)) == -1) { err(1, "open"); }
     unlikely_if((file_beg = mmap(NULL, file_len, PROT_WRITE | PROT_READ, flag,
                                  file_fd, 0)) == MAP_FAILED) {
@@ -762,15 +731,13 @@ map_file_shr(bool shr) {
     file_end = file_beg + file_len;
 }
 
-static void
-remap_shr(bool shr) {
+static void remap_shr(bool shr) {
     munmap(file_beg, file_len);
     close(file_fd);
     map_file_shr(shr);
 }
 
-static unsigned long long
-grow_diff(unsigned long long size) {
+static unsigned long long grow_diff(unsigned long long size) {
     ssize_t d;
     unlikely_if((d = write(diff_fd, null, 4096)) == -1) { err(1, "write"); }
     unlikely_if((diff_beg = mremap(diff_beg, size, size + d,
@@ -780,8 +747,7 @@ grow_diff(unsigned long long size) {
     return size + d;
 }
 
-static void
-stash_changes(long long off, flxarr *arr) {
+static void stash_changes(long long off, flxarr *arr) {
     unsigned long long size = nbyte(arr->size),
                        diff_needed = sizeof(long long) + sizeof(arr) + size,
                        curs_pos = diff_curs - diff_beg,
@@ -799,8 +765,7 @@ stash_changes(long long off, flxarr *arr) {
     diff_end = diff_beg + curr_size;
 }
 
-static void
-commit_changes(void) {
+static void commit_changes(void) {
     long long *off = (long long *)diff_beg;
     flxarr *arr = (flxarr *)(off + 1);
     unsigned long long size = nbyte(arr->size);
@@ -812,8 +777,7 @@ commit_changes(void) {
     }
 }
 
-static void
-commit_changes_dirty(void) {
+static void commit_changes_dirty(void) {
     long long *off = (long long *)diff_beg;
     flxarr *arr = (flxarr *)(off + 1);
     unsigned long long size = nbyte(arr->size);
@@ -829,13 +793,9 @@ commit_changes_dirty(void) {
     }
 }
 
-static void
-clean_diff(void) {
-    unlink(diff_name);
-}
+static void clean_diff(void) { unlink(diff_name); }
 
-static void
-save_diff(void) {
+static void save_diff(void) {
     unsigned long long pos = access(file_curs) - file_beg;
     remap_shr(true);
     commit_changes();
@@ -843,8 +803,7 @@ save_diff(void) {
     access(file_curs) = file_beg + pos;
 }
 
-static ans
-should_merge(void) {
+static ans should_merge(void) {
     size_t len = 0;
     ssize_t read;
     char *strbuf = NULL;
@@ -855,7 +814,7 @@ should_merge(void) {
              "\n\tn: do not merge and delete the backup"
              "\n\td: load changes and display"
              "\n{y|n|d}: ");
-        unlikely_if ((read = getline(&strbuf, &len, stdin)) == -1) {
+        unlikely_if((read = getline(&strbuf, &len, stdin)) == -1) {
             err(1, "getline");
         }
         unlikely_if(read != 2) { continue; }

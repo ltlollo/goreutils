@@ -31,21 +31,21 @@ static cmdmap map[] = {
     [tgz] = {{"tar"    , "xvzf" }, {".tgz"    , ".tar.gz"             }},
     [tbz] = {{"tar"    , "xvjf" }, {".tar.bz2", ".tbz"   ,  ".tar.bz" }},
     [txz] = {{"tar"    , "xvJf" }, {".tar.xz"                         }},
-    [gz]  = {{"gzip"   , "-d"   }, {".gz"                             }},
-    [bz]  = {{"bunzip"          }, {".bz"                             }},
+    [gz ] = {{"gzip"   , "-d"   }, {".gz"                             }},
+    [bz ] = {{"bunzip"          }, {".bz"                             }},
     [bz2] = {{"bunzip2"         }, {".bz2"                            }},
-    [xz]  = {{"unlzma"          }, {".xz"                             }},
+    [xz ] = {{"unlzma"          }, {".xz"                             }},
     [zip] = {{"unzip"           }, {".zip"                            }},
-    [rar] = {{"unrar"  ,  "x"   }, {".rar"                            }},
-    [sz]  = {{"7z"     ,  "x"   }, {".7z"                             }},
-    [z]   = {{"uncompress"      }, {".z"                              }},
+    [rar] = {{"unrar"  , "x"    }, {".rar"                            }},
+    [sz ] = {{"7z"     , "x"    }, {".7z"                             }},
+    [z  ] = {{"uncompress"      }, {".z"                              }},
     [deb] = {{"ar"     , "vx"   }, {".deb"                            }},
 };
 
 int
 main(int argc, char *argv[]) {
     if (argc - 1 < 1) {
-        errx(1, "NEA");
+        errx(1, "not enough arguments");
     }
     char *fn = argv[1];
     size_t fnlen = strlen(fn);
@@ -67,4 +67,3 @@ main(int argc, char *argv[]) {
     }
     return 1;
 }
-
