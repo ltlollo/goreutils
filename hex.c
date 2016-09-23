@@ -246,13 +246,23 @@ static void setup_diff(void) {
     struct stat sb;
     bool dirty = true;
     ssize_t initd;
-
+    size_t len = strlen(file_name);
+    debug_assert(len != 0);
+    
+    const char *base_name = file_name + len - 1;
+    do {
+        if (*base_name == '/') {
+            break;
+        }
+    } while (unlikely(--base_name != file_name - 1));
     unlikely_if((diff_name = (char *)malloc(sizeof(DIFF_PRE) +
                                             strlen(file_name))) == NULL) {
         err(1, "malloc");
     }
-    memcpy(diff_name, DIFF_PRE, cxlen(DIFF_PRE));
-    strcpy(diff_name + cxlen(DIFF_PRE), file_name);
+    size_t base_size = base_name + 1 - file_name;
+    memcpy(diff_name, file_name, base_size);
+    memcpy(diff_name + base_size, DIFF_PRE, cxlen(DIFF_PRE));
+    strcpy(diff_name + base_size + cxlen(DIFF_PRE), file_name + base_size);
 
     unlikely_if((diff_fd = open(diff_name, O_RDWR | O_CREAT, 0644)) == -1) {
         err(1, "open");
