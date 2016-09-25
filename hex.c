@@ -20,7 +20,7 @@
 #define atomic(x) _Alignas(64) x
 
 #define DIFF_PRE ".diff."
-#define ADDR "0000000000000000"
+#define ADDR "0000000000000000:"
 #define COL " 00 00 00 00 00 00 00 00 |"
 #define MODEL ADDR COL COL
 #define MXLINES 160
