@@ -24,6 +24,7 @@ DECL int init_strset_size(StrSet *, size_t);
 DECL int init_strset(StrSet *);
 DECL void free_strset(StrSet *);
 DECL char *insert_strset(StrSet *, const char *);
+DECL char *insertn_strset(StrSet *, const char *, size_t n);
 DECL void offset_strset_tokv(StrSet *, char **, size_t);
 DECL void freeze_strset(StrSet *);
 
@@ -36,7 +37,7 @@ DECL void freeze_strset(StrSet *);
 #include <string.h> // strcmp, strlen, memcpy, memmove
 
 static inline int addarr_strset(StrSet *, char *, size_t);
-static inline char *addraw_strset(StrSet *, const char *);
+static inline char *addrawn_strset(StrSet *, const char *, size_t);
 static inline int addarr_strset(StrSet *, char *, size_t);
 static inline char **lower_bound(char **, char **, const char *, ptrdiff_t);
 
@@ -84,7 +85,24 @@ insert_strset(StrSet *set, const char *str) {
 	char **it = lower_bound(set->arr, set->arr + set->arr_size, str, off);
 	size_t pos = it - set->arr;
 	if (pos == set->arr_size || strcmp(str, *it + (ptrdiff_t)set->raw)) {
-		char *nstr = addraw_strset(set, str);
+		char *nstr = addrawn_strset(set, str, strlen(str));
+		if (nstr == IFAIL) {
+			return IFAIL;
+		}
+		if (addarr_strset(set, nstr, pos)) {
+			return IFAIL;
+		}
+	}
+	return *it;
+}
+
+DECL char *
+insertn_strset(StrSet *set, const char *str, size_t n) {
+	ptrdiff_t off = (ptrdiff_t)set->raw;
+	char **it = lower_bound(set->arr, set->arr + set->arr_size, str, off);
+	size_t pos = it - set->arr;
+	if (pos == set->arr_size || strcmp(str, *it + (ptrdiff_t)set->raw)) {
+		char *nstr = addrawn_strset(set, str, n);
 		if (nstr == IFAIL) {
 			return IFAIL;
 		}
@@ -130,8 +148,8 @@ lower_bound(char **beg, char **end, const char *val, ptrdiff_t off) {
 }
 
 static inline char *
-addraw_strset(StrSet *set, const char *str) {
-	size_t sstr = strlen(str) + 1;
+addrawn_strset(StrSet *set, const char *str, size_t n) {
+	size_t sstr = n + 1;
 	size_t res = set->raw_size;
 	if (set->raw_size + sstr > set->raw_alloc) {
 		size_t incr = set->raw_alloc / 2 + sstr;
@@ -142,7 +160,8 @@ addraw_strset(StrSet *set, const char *str) {
 		set->raw_alloc += incr;
 		set->raw = nraw;
 	}
-	memcpy(set->raw + set->raw_size, str, sstr);
+	memcpy(set->raw + set->raw_size, str, n);
+	set->raw[set->raw_size + n] = '\0';
 	set->raw_size += sstr;
 	return (char *)NULL + res;
 }
