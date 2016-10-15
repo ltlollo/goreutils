@@ -148,4 +148,4 @@ addarr(StrSet *set, char *str, size_t pos) {
 	return 0;
 }
 
-#endif
+#endif // STR_SET_IMPL
