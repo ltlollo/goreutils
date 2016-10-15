@@ -58,7 +58,7 @@
 		__asm__ __volatile__("" : : : "memory");                      \
 		unlikely_if(!(x)) {                                           \
 			fail("err: (" str(x) ") failed at line " tok(         \
-			    __LINE__) " in " tok(__FILE__) "\n");             \
+			        __LINE__) " in " tok(__FILE__) "\n");         \
 		}                                                             \
 	} while (0)
 #else
@@ -609,7 +609,7 @@ parse_cmd(instr *istream) {
 		case 'w':
 			istream->code = wrt;
 			istream->imm =
-			    strtobighex(cmd + 1, &cmdcurs, istream->data);
+			        strtobighex(cmd + 1, &cmdcurs, istream->data);
 			debug_assert(cmdcurs < cmdstr + sizeof(cmdstr));
 			if (cmdcurs == cmd + 1) {
 				return NULL;
@@ -845,7 +845,7 @@ static void
 stash_changes(long long off, flxarr *arr) {
 	unsigned long long size = nbyte(arr->size),
 	                   diff_needed =
-	                       sizeof(long long) + sizeof(arr) + size,
+	                           sizeof(long long) + sizeof(arr) + size,
 	                   curs_pos = diff_curs - diff_beg,
 	                   curr_size = diff_end - diff_beg;
 	while (unlikely(curs_pos + diff_needed > curr_size)) {
