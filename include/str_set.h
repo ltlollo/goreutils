@@ -1,5 +1,3 @@
-// gpp self $cppflags -DSTATIC -DSTR_SET_IMPL
-
 #ifndef STR_SET_H
 #define STR_SET_H
 
@@ -151,24 +149,3 @@ addarr(StrSet *set, char *str, size_t pos) {
 }
 
 #endif
-
-#include <iostream>
-#include <string>
-
-int
-main(int argc, char *argv[]) {
-	StrSet set;
-	if (init(&set) == -1) {
-		return 1;
-	}
-	std::string s;
-	while (std::cin >> s) {
-		insert(&set, s.c_str());
-	}
-	freeze(&set);
-	for (size_t i = 0; i < set.arr_size; ++i) {
-		printf("%s\n", set.arr[i]);
-	}
-	return 0;
-}
-
