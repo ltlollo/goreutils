@@ -10,13 +10,14 @@ typedef struct {
 	char **arr;
 } StrSet;
 
-
 #define UNUSED __attribute__((unused))
 #ifdef STATIC
 #define DECL static UNUSED
 #else
 #define DECL extern "C"
 #endif
+
+#define IFAIL ((char *)NULL - 1)
 
 DECL int init_strset_size_avg(StrSet *, size_t, size_t);
 DECL int init_strset_size(StrSet *, size_t);
@@ -34,9 +35,9 @@ DECL void freeze_strset(StrSet *);
 #include <stdlib.h> // malloc, realloc, free
 #include <string.h> // strcmp, strlen, memcpy, memmove
 
-static inline int addarr(StrSet *, char *, size_t);
-static inline char *addraw(StrSet *, const char *);
-static inline int addarr(StrSet *, char *, size_t);
+static inline int addarr_strset(StrSet *, char *, size_t);
+static inline char *addraw_strset(StrSet *, const char *);
+static inline int addarr_strset(StrSet *, char *, size_t);
 static inline char **lower_bound(char **, char **, const char *, ptrdiff_t);
 
 DECL int
@@ -83,12 +84,12 @@ insert_strset(StrSet *set, const char *str) {
 	char **it = lower_bound(set->arr, set->arr + set->arr_size, str, off);
 	size_t pos = it - set->arr;
 	if (pos == set->arr_size || strcmp(str, *it + (ptrdiff_t)set->raw)) {
-		char *nstr = addraw(set, str);
-		if (nstr == (char *)NULL - 1) {
-			return (char *)NULL - 1;
+		char *nstr = addraw_strset(set, str);
+		if (nstr == IFAIL) {
+			return IFAIL;
 		}
-		if (addarr(set, nstr, pos)) {
-			return (char *)NULL - 1;
+		if (addarr_strset(set, nstr, pos)) {
+			return IFAIL;
 		}
 	}
 	return *it;
@@ -129,14 +130,14 @@ lower_bound(char **beg, char **end, const char *val, ptrdiff_t off) {
 }
 
 static inline char *
-addraw(StrSet *set, const char *str) {
+addraw_strset(StrSet *set, const char *str) {
 	size_t sstr = strlen(str) + 1;
 	size_t res = set->raw_size;
 	if (set->raw_size + sstr > set->raw_alloc) {
 		size_t incr = set->raw_alloc / 2 + sstr;
 		char *nraw = (char *)realloc(set->raw, set->raw_alloc + incr);
 		if (nraw == NULL) {
-			return (char *)NULL - 1;
+			return IFAIL;
 		}
 		set->raw_alloc += incr;
 		set->raw = nraw;
@@ -147,7 +148,7 @@ addraw(StrSet *set, const char *str) {
 }
 
 static inline int
-addarr(StrSet *set, char *str, size_t pos) {
+addarr_strset(StrSet *set, char *str, size_t pos) {
 	if (set->arr_size == set->arr_alloc) {
 		size_t incr = set->arr_size / 2 + 1;
 		char **narr = (char **)realloc(
