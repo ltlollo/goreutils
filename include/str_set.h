@@ -1,9 +1,7 @@
 #ifndef STR_SET_H
 #define STR_SET_H
 
-#include <stddef.h>
-#include <stdlib.h>
-#include <string.h>
+#include <stddef.h> // size_t, ptrdiff_t
 
 typedef struct {
 	size_t raw_size, raw_alloc;
@@ -12,22 +10,29 @@ typedef struct {
 	char **arr;
 } StrSet;
 
+
+#define UNUSED __attribute__((unused))
 #ifdef STATIC
-#define DECL static
+#define DECL static UNUSED
 #else
 #define DECL extern "C"
 #endif
 
-DECL int init_size_avg(StrSet *, size_t, size_t);
-DECL int init_size(StrSet *, size_t);
-DECL int init(StrSet *);
-DECL char *insert(StrSet *, const char *);
-DECL void offset(StrSet *, char **, size_t);
-DECL void freeze(StrSet *);
+DECL int init_strset_size_avg(StrSet *, size_t, size_t);
+DECL int init_strset_size(StrSet *, size_t);
+DECL int init_strset(StrSet *);
+DECL void free_strset(StrSet *);
+DECL char *insert_strset(StrSet *, const char *);
+DECL void offset_strset_tokv(StrSet *, char **, size_t);
+DECL void freeze_strset(StrSet *);
 
 #endif // STR_SET_H
 
 #ifdef STR_SET_IMPL
+
+#include <assert.h> // assert
+#include <stdlib.h> // malloc, realloc, free
+#include <string.h> // strcmp, strlen, memcpy, memmove
 
 static inline int addarr(StrSet *, char *, size_t);
 static inline char *addraw(StrSet *, const char *);
@@ -35,7 +40,7 @@ static inline int addarr(StrSet *, char *, size_t);
 static inline char **lower_bound(char **, char **, const char *, ptrdiff_t);
 
 DECL int
-init_size_avg(StrSet *set, size_t size, size_t avg) {
+init_strset_size_avg(StrSet *set, size_t size, size_t avg) {
 	if ((set->raw = (char *)malloc(size * avg)) == NULL) {
 		return -1;
 	}
@@ -51,17 +56,29 @@ init_size_avg(StrSet *set, size_t size, size_t avg) {
 }
 
 DECL int
-init_size(StrSet *set, size_t size) {
-	return init_size_avg(set, size, 8);
+init_strset_size(StrSet *set, size_t size) {
+	return init_strset_size_avg(set, size, 8);
 }
 
 DECL int
-init(StrSet *set) {
-	return init_size(set, 4096);
+init_strset(StrSet *set) {
+	return init_strset_size(set, 4096);
+}
+
+DECL void
+free_strset(StrSet *set) {
+	set->raw_size = 0;
+	set->raw_alloc = 0;
+	set->arr_size = 0;
+	set->arr_alloc = 0;
+	assert(set->arr);
+	assert(set->raw);
+	free(set->arr);
+	free(set->raw);
 }
 
 DECL char *
-insert(StrSet *set, const char *str) {
+insert_strset(StrSet *set, const char *str) {
 	ptrdiff_t off = (ptrdiff_t)set->raw;
 	char **it = lower_bound(set->arr, set->arr + set->arr_size, str, off);
 	size_t pos = it - set->arr;
@@ -78,16 +95,16 @@ insert(StrSet *set, const char *str) {
 }
 
 DECL void
-freeze(StrSet *set) {
+freeze_strset(StrSet *set) {
 	set->raw = (char *)realloc(set->raw, set->raw_size);
 	set->raw_alloc = set->raw_size;
 	set->arr = (char **)realloc(set->arr, set->arr_size * sizeof(char *));
 	set->arr_alloc = set->arr_size;
-	offset(set, set->arr, set->arr_size);
+	offset_strset_tokv(set, set->arr, set->arr_size);
 }
 
 DECL void
-offset(StrSet *set, char **beg, size_t size) {
+offset_strset_tokv(StrSet *set, char **beg, size_t size) {
 	for (size_t i = 0; i < size; ++i) {
 		beg[i] += (ptrdiff_t)set->raw;
 	}
