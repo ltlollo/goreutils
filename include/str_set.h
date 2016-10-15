@@ -33,6 +33,7 @@ DECL void freeze_strset(StrSet *);
 #ifdef STR_SET_IMPL
 
 #include <assert.h> // assert
+#include <stdio.h>  // fprtinf
 #include <stdlib.h> // malloc, realloc, free
 #include <string.h> // strcmp, strlen, memcpy, memmove
 
@@ -115,6 +116,14 @@ insertn_strset(StrSet *set, const char *str, size_t n) {
 
 DECL void
 freeze_strset(StrSet *set) {
+#ifdef MEMDBG
+	(void)fprintf(stderr, "MEMDBG:\n\taddr: %p\n\ttoken_set_size: %lu\n\t"
+	                      "raw_str_size: %lu\n\ttotal_alloc_peak: "
+	                      "%lu\n\ttotal_size: %lu\n",
+	              (void *)set, set->arr_size, set->raw_size,
+	              set->raw_alloc + set->arr_alloc * sizeof(char *),
+	              set->raw_size + set->arr_size * sizeof(char *));
+#endif
 	set->raw = (char *)realloc(set->raw, set->raw_size);
 	set->raw_alloc = set->raw_size;
 	set->arr = (char **)realloc(set->arr, set->arr_size * sizeof(char *));
@@ -125,7 +134,7 @@ freeze_strset(StrSet *set) {
 DECL void
 offset_strset_tokv(StrSet *set, char **beg, size_t size) {
 	for (size_t i = 0; i < size; ++i) {
-		beg[i] += (ptrdiff_t)set->raw;
+		beg[i] += ((ptrdiff_t)set->raw - (ptrdiff_t)NULL);
 	}
 }
 
