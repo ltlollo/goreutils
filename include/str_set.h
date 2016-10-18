@@ -1,6 +1,7 @@
 #ifndef STR_SET_H
 #define STR_SET_H
 
+#include "core.h" // malloc, realloc, free, reallocarr, reallocarr_incr, MACROS
 #include <stddef.h> // size_t, ptrdiff_t
 
 typedef struct {
@@ -9,13 +10,6 @@ typedef struct {
 	size_t arr_size, arr_alloc;
 	char **arr;
 } StrSet;
-
-#define UNUSED __attribute__((unused))
-#ifdef STATIC
-#define DECL static UNUSED
-#else
-#define DECL extern "C"
-#endif
 
 #define IFAIL ((char *)NULL - 1)
 
@@ -28,13 +22,11 @@ DECL char *insertn_strset(StrSet *, const char *, size_t n);
 DECL void offset_strset_tokv(StrSet *, char **, size_t);
 DECL void freeze_strset(StrSet *);
 
-#endif // STR_SET_H
+#ifdef IMPL
 
-#ifdef STR_SET_IMPL
 
 #include <assert.h> // assert
 #include <stdio.h>  // fprtinf
-#include <stdlib.h> // malloc, realloc, free
 #include <string.h> // strcmp, strlen, memcpy, memmove
 
 static inline int addarr_strset(StrSet *, char *, size_t);
@@ -44,10 +36,10 @@ static inline char **lower_bound(char **, char **, const char *, ptrdiff_t);
 
 DECL int
 init_strset_size_avg(StrSet *set, size_t size, size_t avg) {
-	if ((set->raw = (char *)malloc(size * avg)) == NULL) {
+	if (reallocarr((void **)&set->raw, size, avg) == -1) {
 		return -1;
 	}
-	if ((set->arr = (char **)malloc(size * sizeof(char *))) == NULL) {
+	if (reallocarr((void **)&set->arr, sizeof(char *), size) == -1) {
 		free(set->raw);
 		return -1;
 	}
@@ -162,12 +154,11 @@ addrawn_strset(StrSet *set, const char *str, size_t n) {
 	size_t res = set->raw_size;
 	if (set->raw_size + sstr > set->raw_alloc) {
 		size_t incr = set->raw_alloc / 2 + sstr;
-		char *nraw = (char *)realloc(set->raw, set->raw_alloc + incr);
-		if (nraw == NULL) {
+		if (reallocarr_incr((void **)&set->raw, 1, set->raw_alloc,
+		                    incr) == -1) {
 			return IFAIL;
 		}
 		set->raw_alloc += incr;
-		set->raw = nraw;
 	}
 	memcpy(set->raw + set->raw_size, str, n);
 	set->raw[set->raw_size + n] = '\0';
@@ -179,13 +170,11 @@ static inline int
 addarr_strset(StrSet *set, char *str, size_t pos) {
 	if (set->arr_size == set->arr_alloc) {
 		size_t incr = set->arr_size / 2 + 1;
-		char **narr = (char **)realloc(
-		        set->arr, (set->arr_alloc + incr) * sizeof(char *));
-		if (narr == NULL) {
+		if (reallocarr_incr((void **)&set->arr, sizeof(char *),
+		                    set->arr_alloc, incr) == -1) {
 			return -1;
 		}
 		set->arr_alloc += incr;
-		set->arr = narr;
 	}
 	memmove(set->arr + pos + 1, set->arr + pos,
 	        (set->arr_size - pos) * sizeof(char *));
@@ -194,4 +183,6 @@ addarr_strset(StrSet *set, char *str, size_t pos) {
 	return 0;
 }
 
-#endif // STR_SET_IMPL
+#endif // IMPL
+
+#endif // STR_SET_H
