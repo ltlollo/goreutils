@@ -36,6 +36,8 @@ static inline char **lower_bound(char **, char **, const char *, ptrdiff_t);
 
 DECL int
 init_strset_size_avg(StrSet *set, size_t size, size_t avg) {
+	set->raw = NULL;
+	set->arr = NULL;
 	if (reallocarr((void **)&set->raw, size, avg) == -1) {
 		return -1;
 	}
