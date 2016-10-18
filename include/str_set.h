@@ -41,6 +41,7 @@ init_strset_size_avg(StrSet *set, size_t size, size_t avg) {
 	}
 	if (reallocarr((void **)&set->arr, sizeof(char *), size) == -1) {
 		free(set->raw);
+		set->raw = NULL;
 		return -1;
 	}
 	set->raw_size = 0;
