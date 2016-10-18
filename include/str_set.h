@@ -62,14 +62,14 @@ init_strset(StrSet *set) {
 
 DECL void
 free_strset(StrSet *set) {
-	set->raw_size = 0;
-	set->raw_alloc = 0;
-	set->arr_size = 0;
-	set->arr_alloc = 0;
-	assert(set->arr);
-	assert(set->raw);
 	free(set->arr);
 	free(set->raw);
+	set->raw = NULL;
+	set->raw_size = 0;
+	set->raw_alloc = 0;
+	set->arr = NULL;
+	set->arr_size = 0;
+	set->arr_alloc = 0;
 }
 
 DECL char *
