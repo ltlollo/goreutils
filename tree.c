@@ -32,7 +32,7 @@ show(size_t depth, char *dn) {
         en0 = readdir(dir);
     } while (en0 && en0->d_name[0] == '.');
     if (en0 == NULL) {
-        closedir(dir);
+        (void)closedir(dir);
         return;
 	}
 	do {
@@ -40,18 +40,18 @@ show(size_t depth, char *dn) {
 			en1 = readdir(dir);
 		} while (en1 && en1->d_name[0] == '.');
         for (i = 0; i < depth; ++i) {
-            printf("│   ");
+            (void)printf("│   ");
         }
-        printf("%s───%s\n", en1 ? "├" : "└", en0->d_name);
+        (void)printf("%s───%s\n", en1 ? "├" : "└", en0->d_name);
         if (en0->d_type == DT_DIR) {
 			dnl = strlen(dn), snl = strlen(en0->d_name);
             if ((subdn = (char *)realloc(dnbuf, dnl + snl + 2)) == NULL) {
                 err(1, "realloc");
 			}
-			sprintf(subdn, "%s/%s", dn, en0->d_name);
+            (void)sprintf(subdn, "%s/%s", dn, en0->d_name);
             show(depth + 1, subdn);
 		}
     } while ((en0 = en1));
-	closedir(dir);
+	(void)closedir(dir);
 }
 
