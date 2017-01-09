@@ -7,6 +7,8 @@
 #include <string.h>
 #include <sys/types.h>
 
+extern char *__progname;
+
 static void show(size_t, char *, int);
 static int filt(const char *, int);
 
