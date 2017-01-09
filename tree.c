@@ -12,6 +12,7 @@ static void show(size_t, char *);
 int
 main(int argc, char *argv[]) {
     char *dn = argc - 1 ? argv[1] : (char *)".";
+    (void)printf("%s\n", dn);
     show(0, dn);
     return 0;
 }
