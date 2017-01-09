@@ -18,9 +18,9 @@ main(int argc, char *argv[]) {
     if (strcmp(dn, ".") != 0) {
         (void)printf("%s", dn);
         if (dn[strlen(dn) - 1] != '/') {
-            putchar('/');
+            (void)putchar('/');
         }
-        putchar('\n');
+        (void)putchar('\n');
     }
     int hide = argc - 2 > 0 ? strcmp(argv[2], "-h") : 1;
     show(0, dn, hide);
@@ -55,9 +55,9 @@ show(size_t depth, char *dn, int hide) {
         }
         (void)printf("%s───%s", en1 ? "├" : "└", en0->d_name);
         if (en0->d_type == DT_DIR) {
-            putchar('/');
+            (void)putchar('/');
         }
-        putchar('\n');
+        (void)putchar('\n');
         if (en0->d_type == DT_DIR) {
             dnl = strlen(dn), snl = strlen(en0->d_name);
             if ((subdn = (char *)realloc(dnbuf, dnl + snl + 2)) == NULL) {
