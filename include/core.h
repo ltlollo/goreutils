@@ -1,8 +1,8 @@
 #ifndef H
 #define H
 
-#include <stdlib.h>
 #include <errno.h>
+#include <stdlib.h>
 
 #define STR(...) "" #__VA_ARGS__
 #define TOK(x) STR(x)
@@ -27,8 +27,8 @@
 #define RUNTIME_ASSERT(x)                                                     \
 	do {                                                                  \
 		UNLIKELY_IF_(!(x)) {                                          \
-			FAIL("err: (" STR(x) ") failed at line "              \
-			        TOK(__LINE__) " in " __FILE__ "\n");	      \
+			FAIL("err: (" STR(x) ") failed at line " TOK(         \
+			        __LINE__) " in " __FILE__ "\n");              \
 		}                                                             \
 	} while (0)
 
@@ -38,8 +38,8 @@
 	do {                                                                  \
 		__asm__ __volatile__("" : : : "memory");                      \
 		UNLIKELY_IF_(!(x)) {                                          \
-			FAIL("err: (" STR(x) ") failed at line "              \
-			        TOK(__LINE__) " in " __FILE__ "\n");	      \
+			FAIL("err: (" STR(x) ") failed at line " TOK(         \
+			        __LINE__) " in " __FILE__ "\n");              \
 		}                                                             \
 	} while (0)
 #else
@@ -66,7 +66,8 @@ reallocarr(void **mem, size_t size, size_t nmemb) {
 	UNLIKELY_IF_(__builtin_umull_overflow(size, nmemb, &tot)) {
 		errno = ENOMEM;
 		return -1;
-	} else UNLIKELY_IF_((res = realloc(*mem, tot)) == NULL) {
+	}
+	else UNLIKELY_IF_((res = realloc(*mem, tot)) == NULL) {
 		return -1;
 	}
 	*mem = res;
@@ -80,16 +81,17 @@ reallocarr_incr(void **mem, size_t size, size_t nmemb, size_t nincr) {
 	UNLIKELY_IF_(__builtin_uaddl_overflow(nmemb, nincr, &tot)) {
 		errno = ENOMEM;
 		return -1;
-	} else UNLIKELY_IF_(__builtin_umull_overflow(size, tot, &tot)) {
+	}
+	else UNLIKELY_IF_(__builtin_umull_overflow(size, tot, &tot)) {
 		errno = ENOMEM;
 		return -1;
-	} else UNLIKELY_IF_((res = realloc(*mem, tot)) == NULL) {
+	}
+	else UNLIKELY_IF_((res = realloc(*mem, tot)) == NULL) {
 		return -1;
 	}
 	*mem = res;
 	return 0;
 }
-
 
 #endif // IMPL
 
