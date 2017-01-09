@@ -1,4 +1,4 @@
-// gpp self $cppflags
+// gcc self $cflags
 
 #include <dirent.h>
 #include <err.h>
