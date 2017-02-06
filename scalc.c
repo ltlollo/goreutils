@@ -1,8 +1,6 @@
-// gcc self -g -O0 -lm $(pkg-config --libs ncursesw) -o scalc
+// gcc self $cflags -lm $(pkg-config --libs ncursesw) -o scalc
 
-#include <assert.h>
 #include <ctype.h>
-#include <err.h>
 #include <errno.h>
 #include <locale.h>
 #include <math.h>
@@ -36,7 +34,8 @@ _Static_assert(HIST_SIZE >= HIST_RNGBUF_SIZE, "history ring buffer too big");
 #define COL_GREEN 107
 #define COL_ORANGE 173
 #define COL_WHITE 252
-#define COL_GRAY 248
+#define COL_GRAY 102
+#define COL_PURPLE 96
 #define COL_DARK_GRAY 236
 #define COL_XDARK_GRAY 234
 #define COL_YELLOW 221
@@ -55,6 +54,7 @@ typedef enum COL {
     COL_5,
     COL_6,
     COL_7,
+    COL_8,
     COL_END,
     COL_ALT_BEG = COL_END,
     COL_ALT_0 = COL_ALT_BEG,
@@ -65,6 +65,7 @@ typedef enum COL {
     COL_ALT_5,
     COL_ALT_6,
     COL_ALT_7,
+    COL_ALT_8,
     COL_ALT_END,
     COL_BG_BEG = COL_ALT_END,
     COL_BG_0 = COL_BG_BEG,
@@ -73,7 +74,6 @@ typedef enum COL {
     COL_BG_ALT_0 = COL_BG_ALT_BEG,
     COL_BG_ALT_END
 } COL;
-
 
 typedef enum OP {
     OP_INVALID = -1,
@@ -145,6 +145,7 @@ static const int color[] = {
             [COL_6] = COL_DARK_GRAY, [COL_ALT_6] = COL_DARK_GRAY,
             [COL_5] = COL_WHITE,     [COL_ALT_5] = COL_PINK,
             [COL_7] = COL_GRAY,      [COL_ALT_7] = COL_PURE_WHITE,
+            [COL_8] = COL_PURPLE,    [COL_ALT_8] = COL_GREEN,
 };
 static const int color_bg[] = {
             [COL_BG_0] = COL_XDARK_GRAY, [COL_BG_ALT_0] = COL_XDARK_GRAY,
@@ -152,7 +153,7 @@ static const int color_bg[] = {
 static const char *shex = "0123456789abcdef";
 static const char *smode[] = {
             [MODE_INT] = "int", [MODE_UINT] = "uint", [MODE_F32] = "f32",
-            [MODE_F64] = "f6,",
+            [MODE_F64] = "f64",
 };
 static unsigned currreg = 0;
 static unsigned currcmd = 0;
@@ -164,6 +165,8 @@ static char hist[HIST_SIZE][USRIN_SIZE + 1] = { 0 };
 static char usrin[USRIN_SIZE + 1] = { 0 };
 static char dbgmsg[USRIN_SIZE + 1] = { 0 };
 static FILE *hist_file = NULL;
+
+extern const char *__progname;
 
 static void printc(int, const char *, ...);
 static void render_regs(void);
@@ -201,7 +204,9 @@ render_regs(void) {
         Reg creg = *regp;
         uint64_t ull = creg.u64;
 
-        printc(color_off + 0, "[%d]", pos);
+        printc(color_off + 8, "[");
+        printc(color_off + 0, "%hd", pos);
+        printc(color_off + 8, "]");
         printc(color_off + 4, "bin");
         printc(color_off + 0, " 0b");
 
@@ -295,7 +300,7 @@ render_hist(void) {
     for (int i = 0; i < HIST_RNGBUF_SIZE; ++i) {
         int pos = (HIST_RNGBUF_SIZE + currcmd - i) % HIST_SIZE;
         printc(COL_BG_ALT_BEG + 0, " ");
-        printc(COL_BEG + 7, "%s\n", hist[pos]);
+        printc(COL_BEG + 8, "%s\n", hist[pos]);
     }
 }
 
@@ -332,8 +337,20 @@ render_dbg(void) {
 }
 
 static void
+render_title(void) {
+    printc(COL_ALT_BEG + 8, "[");
+    printc(COL_ALT_BEG + 0, "%s", __progname);;
+    printc(COL_ALT_BEG + 8, "]");
+    printc(COL_ALT_BEG + 8, " register mode: ");
+    printc(COL_ALT_BEG + 2, "%s", smode[mode]);;
+    printc(COL_ALT_BEG + 8, " history mode: ");
+    printc(COL_ALT_BEG + 2, "%s\n", mode_usecmd ? "clobber" : "noclobber");
+}
+
+static void
 renderscr(void) {
     clear();
+    render_title();
     render_regs();
     render_hist();
     render_cmd();
@@ -780,6 +797,10 @@ main(void) {
     while (run) {
         renderscr();
         switch (c = getch()) {
+        case '?':
+            sigerr("?: 'm' to change register mode, TAB to change history "
+                   "mode");
+            break;
         case 'Q':
         case 'q':
             run = 0;
