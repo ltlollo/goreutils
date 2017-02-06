@@ -1,4 +1,4 @@
-// gcc self $cflags -lm $(pkg-config --libs ncursesw) -o scalc
+// gcc self $cfalgs -lm $(pkg-config --libs ncursesw) -o scalc
 
 #include <ctype.h>
 #include <errno.h>
@@ -273,16 +273,16 @@ render_regs(void) {
         } else if (mode == MODE_UINT) {
             printc(color_off + 0, "\n └─");
             printc(color_off + 4, "u8 ");
-            printc(color_off + 0, "%s%4hhd  ", creg.hhhalf.rest ? ".." : "  ",
+            printc(color_off + 0, "%s%4hhu  ", creg.hhhalf.rest ? ".." : "  ",
                    creg.hhhalf.u8);
             printc(color_off + 4, "u16 ");
-            printc(color_off + 0, "%s%6hd  ", creg.hhalf.rest ? ".." : "  ",
+            printc(color_off + 0, "%s%6hu  ", creg.hhalf.rest ? ".." : "  ",
                    creg.hhalf.u16);
             printc(color_off + 4, "u32 ");
-            printc(color_off + 0, "%s%11hd  ", creg.half.rest ? ".." : "  ",
+            printc(color_off + 0, "%s%11hu  ", creg.half.rest ? ".." : "  ",
                    creg.half.u32);
             printc(color_off + 4, "u64 ");
-            printc(color_off + 5, "%20lld\n", creg.u64);
+            printc(color_off + 5, "%20llu\n", creg.u64);
         } else if (mode == MODE_F64) {
             printc(color_off + 0, "\n └─");
             printc(color_off + 4, "f64 ");
@@ -339,10 +339,10 @@ render_dbg(void) {
 static void
 render_title(void) {
     printc(COL_ALT_BEG + 8, "[");
-    printc(COL_ALT_BEG + 0, "%s", __progname);;
+    printc(COL_ALT_BEG + 0, "%s", __progname);
     printc(COL_ALT_BEG + 8, "]");
     printc(COL_ALT_BEG + 8, " register mode: ");
-    printc(COL_ALT_BEG + 2, "%s", smode[mode]);;
+    printc(COL_ALT_BEG + 2, "%s", smode[mode]);
     printc(COL_ALT_BEG + 8, " history mode: ");
     printc(COL_ALT_BEG + 2, "%s\n", mode_usecmd ? "clobber" : "noclobber");
 }
@@ -581,6 +581,7 @@ eval_op(const OP op, const Reg f, const Reg s) {
                 sigerr("error: right operand cannot be negative");
                 break;
             }
+            res.i64 = 1;
             for (uint64_t i = 0; i < s.u64; ++i) {
                 res.i64 *= f.i64;
             }
