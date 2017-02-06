@@ -38,6 +38,7 @@ _Static_assert(HIST_SIZE >= HIST_RNGBUF_SIZE, "history ring buffer too big");
 #define COL_WHITE 252
 #define COL_GRAY 248
 #define COL_DARK_GRAY 236
+#define COL_XDARK_GRAY 234
 #define COL_YELLOW 221
 #define COL_PINK 161
 
@@ -65,6 +66,12 @@ typedef enum COL {
     COL_ALT_6,
     COL_ALT_7,
     COL_ALT_END,
+    COL_BG_BEG = COL_ALT_END,
+    COL_BG_0 = COL_BG_BEG,
+    COL_BG_END,
+    COL_BG_ALT_BEG = COL_BG_END,
+    COL_BG_ALT_0 = COL_BG_ALT_BEG,
+    COL_BG_ALT_END
 } COL;
 
 
@@ -138,6 +145,9 @@ static const int color[] = {
             [COL_6] = COL_DARK_GRAY, [COL_ALT_6] = COL_DARK_GRAY,
             [COL_5] = COL_WHITE,     [COL_ALT_5] = COL_PINK,
             [COL_7] = COL_GRAY,      [COL_ALT_7] = COL_PURE_WHITE,
+};
+static const int color_bg[] = {
+            [COL_BG_0] = COL_XDARK_GRAY, [COL_BG_ALT_0] = COL_XDARK_GRAY,
 };
 static const char *shex = "0123456789abcdef";
 static const char *smode[] = {
@@ -284,7 +294,8 @@ static void
 render_hist(void) {
     for (int i = 0; i < HIST_RNGBUF_SIZE; ++i) {
         int pos = (HIST_RNGBUF_SIZE + currcmd - i) % HIST_SIZE;
-        printc(COL_BEG + 7, "> %s\n", hist[pos]);
+        printc(COL_BG_ALT_BEG + 0, " ");
+        printc(COL_BEG + 7, "%s\n", hist[pos]);
     }
 }
 
@@ -295,12 +306,13 @@ render_cmd(void) {
     if (mode_usecmd != 0 && cursor < 0) {
         memcpy(usrin, hist[currcmd % HIST_SIZE], USRIN_SIZE);
     }
-    printc(COL_ALT_BEG + 7, "$ %s", usrin);
+    printc(COL_BG_BEG + 0, " ");
+    printc(COL_ALT_BEG + 7, "%s", usrin);
     if (cursor > (len = (int)strlen(usrin)) || cursor < 0) {
         cursor = len;
     }
     getyx(stdscr, y, x);
-    move(y, cursor + 2);
+    move(y, cursor + 1);
     (void)x;
 }
 
@@ -734,6 +746,9 @@ initcalc(void) {
 
     for (int i = COL_BEG; i < COL_ALT_END; ++i) {
         init_pair(i, color[i], -1);
+    }
+    for (int i = COL_BG_BEG; i < COL_BG_ALT_END; ++i) {
+        init_pair(i, -1, color_bg[i]);
     }
     load_hist();
     --currcmd;
