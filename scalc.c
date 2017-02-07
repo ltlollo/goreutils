@@ -205,7 +205,7 @@ render_regs(void) {
         uint64_t ull = creg.u64;
 
         printc(color_off + 8, "[");
-        printc(color_off + 0, "%hd", pos);
+        printc(color_off + 0, "%02x", pos);
         printc(color_off + 8, "]");
         printc(color_off + 4, "bin");
         printc(color_off + 0, " 0b");
@@ -248,7 +248,7 @@ render_regs(void) {
                 addch('0' + ((ull >> (63 - j)) & 0x1));
             }
         }
-        printc(color_off + 0, "\n ├─");
+        printc(color_off + 0, "\n ├──");
         printc(color_off + 4, "hex");
         printc(color_off + 0, " 0x");
         for (int i = 0; i < 16; ++i) {
@@ -258,7 +258,7 @@ render_regs(void) {
             addch(shex[(ull >> (4 * (15 - i))) & 0xf]);
         }
         if (mode == MODE_INT) {
-            printc(color_off + 0, "\n └─");
+            printc(color_off + 0, "\n └──");
             printc(color_off + 4, "i8 ");
             printc(color_off + 0, "%s%4hhd  ", creg.hhhalf.rest ? ".." : "  ",
                    creg.hhhalf.i8);
@@ -700,6 +700,14 @@ static int
 eval(const char *usrin) {
     static char cmd[2 * USRIN_SIZE + 1];
     char *tok, *save;
+    long long len = strlen(usrin);
+
+    if (len == 0) {
+        return -1;
+    } else if (len == 1 && *usrin == ';') {
+        ++currreg;
+        return -1;
+    }
 
     insert_spaces(usrin, cmd);
 
@@ -814,7 +822,6 @@ main(void) {
             break;
         case '\n':
             dbgmsg[0] = '\0';
-
             if (eval(usrin) == -1) {
                 break;
             }
