@@ -126,7 +126,7 @@ typedef union Reg {
         uint64_t rest : 56;
     } hhhalf;
 } Reg;
-_Static_assert(sizeof(Reg) == 8, "unsupported arcitecture");
+_Static_assert(sizeof(Reg) == 8, "unsupported architecture");
 
 typedef struct Cell {
     enum TYPE { TYPE_OP, TYPE_NUM } type;
@@ -271,7 +271,7 @@ render_regs(void) {
             printc(color_off + 4, "i64 ");
             printc(color_off + 5, "%20lld\n", creg.i64);
         } else if (mode == MODE_UINT) {
-            printc(color_off + 0, "\n └─");
+            printc(color_off + 0, "\n └──");
             printc(color_off + 4, "u8 ");
             printc(color_off + 0, "%s%4hhu  ", creg.hhhalf.rest ? ".." : "  ",
                    creg.hhhalf.u8);
@@ -284,11 +284,11 @@ render_regs(void) {
             printc(color_off + 4, "u64 ");
             printc(color_off + 5, "%20llu\n", creg.u64);
         } else if (mode == MODE_F64) {
-            printc(color_off + 0, "\n └─");
+            printc(color_off + 0, "\n └──");
             printc(color_off + 4, "f64 ");
             printc(color_off + 5, "%.40f\n", creg.f64);
         } else if (mode == MODE_F32) {
-            printc(color_off + 0, "\n └─");
+            printc(color_off + 0, "\n └──");
             printc(color_off + 4, "f32 ");
             printc(color_off + 5, "%.20f\n", creg.half.f32);
         }
