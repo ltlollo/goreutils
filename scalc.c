@@ -782,7 +782,7 @@ initcalc(void) {
 
 static int
 find_prev_simil(const char *usrin, int cursor, int (*f)(int)) {
-    while (f(usrin[cursor - 1]) && cursor) {
+    while (cursor && f(usrin[cursor - 1])) {
         --cursor;
     }
     return cursor;
