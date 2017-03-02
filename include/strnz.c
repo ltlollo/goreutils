@@ -26,11 +26,11 @@
 typedef __m256i m256i;
 typedef __m128i m128i;
 
-INTER int hash1(m256i , m256i);
-INTER int hash2(m256i, m256i, m256i, m256i);
-INTER int hash3(m256i, m256i, m256i, m256i, m256i);
-INTER int hash4(m256i, m256i, m256i, m256i, m256i);
-INTER int hash33(m256i, m256i, m256i, m256i, m256i, m256i, m256i);
+INTER int64_t hash1(m256i, m256i);
+INTER int64_t hash2(m256i, m256i, m256i, m256i);
+INTER int64_t hash3(m256i, m256i, m256i, m256i, m256i);
+INTER int64_t hash4(m256i, m256i, m256i, m256i, m256i);
+INTER int64_t hash33(m256i, m256i, m256i, m256i, m256i, m256i, m256i);
 
 INTER m256i load_small(const char *, short);
 
@@ -57,25 +57,25 @@ strstrnz(const char *str, size_t n, const char *sstr, size_t sn) {
     }
 }
 
-INTER int
+INTER int64_t
 hash1(m256i fst, m256i c0) {
     return _mm256_movemask_epi8(_mm256_cmpeq_epi8(c0, fst));
 }
 
-INTER int
+INTER int64_t
 hash2(m256i fst, m256i snd, m256i c0, m256i c1) {
     m256i ffeq = _mm256_cmpeq_epi8(c0, fst);
     m256i fseq = _mm256_cmpeq_epi8(c1, fst);
     m256i sseq = _mm256_cmpeq_epi8(c1, snd);
 
-    int ffm = _mm256_movemask_epi8(ffeq);
-    int fsm = _mm256_movemask_epi8(fseq) >> 1;
-    int ssm = _mm256_movemask_epi8(sseq) << 31;
+    int64_t ffm = _mm256_movemask_epi8(ffeq);
+    int64_t fsm = _mm256_movemask_epi8(fseq) >> 1;
+    int64_t ssm = _mm256_movemask_epi8(sseq) << 31;
 
     return ffm & (fsm | ssm);
 }
 
-INTER int
+INTER int64_t
 hash3(m256i fst, m256i snd, m256i c0, m256i c1, m256i c2) {
     m256i ffeq = _mm256_cmpeq_epi8(c0, fst);
     m256i fseq = _mm256_cmpeq_epi8(c1, fst);
@@ -83,16 +83,16 @@ hash3(m256i fst, m256i snd, m256i c0, m256i c1, m256i c2) {
     m256i fqeq = _mm256_cmpeq_epi8(c2, fst);
     m256i sqeq = _mm256_cmpeq_epi8(c2, snd);
 
-    int ffm = _mm256_movemask_epi8(ffeq);
-    int fsm = _mm256_movemask_epi8(fseq) >> 1;
-    int ssm = _mm256_movemask_epi8(sseq) << 31;
-    int ftm = _mm256_movemask_epi8(fqeq) >> 2;
-    int stm = _mm256_movemask_epi8(sqeq) << 30;
+    int64_t ffm = _mm256_movemask_epi8(ffeq);
+    int64_t fsm = _mm256_movemask_epi8(fseq) >> 1;
+    int64_t ssm = _mm256_movemask_epi8(sseq) << 31;
+    int64_t ftm = _mm256_movemask_epi8(fqeq) >> 2;
+    int64_t stm = _mm256_movemask_epi8(sqeq) << 30;
 
     return ffm & (fsm | ssm) & (ftm | stm);
 }
 
-INTER int
+INTER int64_t
 hash4(m256i fst, m256i snd, m256i c0, m256i c1, m256i c3) {
     m256i ffeq = _mm256_cmpeq_epi8(c0, fst);
     m256i fseq = _mm256_cmpeq_epi8(c1, fst);
@@ -100,16 +100,16 @@ hash4(m256i fst, m256i snd, m256i c0, m256i c1, m256i c3) {
     m256i fqeq = _mm256_cmpeq_epi8(c3, fst);
     m256i sqeq = _mm256_cmpeq_epi8(c3, snd);
 
-    int ffm = _mm256_movemask_epi8(ffeq);
-    int fsm = _mm256_movemask_epi8(fseq) >> 1;
-    int ssm = _mm256_movemask_epi8(sseq) << 31;
-    int fqm = _mm256_movemask_epi8(fqeq) >> 3;
-    int sqm = _mm256_movemask_epi8(sqeq) << 29;
+    int64_t ffm = _mm256_movemask_epi8(ffeq);
+    int64_t fsm = _mm256_movemask_epi8(fseq) >> 1;
+    int64_t ssm = _mm256_movemask_epi8(sseq) << 31;
+    int64_t fqm = _mm256_movemask_epi8(fqeq) >> 3;
+    int64_t sqm = _mm256_movemask_epi8(sqeq) << 29;
 
     return ffm & (fsm | ssm) & (fqm | sqm);
 }
 
-// INTER int
+// INTER int64_t
 // hash17(m256i fst, m256i snd, m256i c0, m256i c1, m256i c3, m256i c16) {
 //     m256i mstr = _mm256_permute2f128_si256(fst, snd, 0x21);
 //     m256i ffeq = _mm256_cmpeq_epi8(c0, fst);
@@ -118,18 +118,18 @@ hash4(m256i fst, m256i snd, m256i c0, m256i c1, m256i c3) {
 //     m256i fqeq = _mm256_cmpeq_epi8(c3, fst);
 //     m256i sqeq = _mm256_cmpeq_epi8(c3, snd);
 //     m256i mmeq = _mm256_cmpeq_epi8(c16, mstr);
-// 
-//     int ffm = _mm256_movemask_epi8(ffeq);
-//     int fsm = _mm256_movemask_epi8(fseq) >> 1;
-//     int ssm = _mm256_movemask_epi8(sseq) << 31;
-//     int fqm = _mm256_movemask_epi8(fqeq) >> 3;
-//     int sqm = _mm256_movemask_epi8(sqeq) << 29;
-//     int mfm = _mm256_movemask_epi8(mmeq);
-// 
+//
+//     int64_t ffm = _mm256_movemask_epi8(ffeq);
+//     int64_t fsm = _mm256_movemask_epi8(fseq) >> 1;
+//     int64_t ssm = _mm256_movemask_epi8(sseq) << 31;
+//     int64_t fqm = _mm256_movemask_epi8(fqeq) >> 3;
+//     int64_t sqm = _mm256_movemask_epi8(sqeq) << 29;
+//     int64_t mfm = _mm256_movemask_epi8(mmeq);
+//
 //     return ffm & (fsm | ssm) & (fqm | sqm) & mfm;
 // }
 
-INTER int
+INTER int64_t
 hash33(m256i fst,
        m256i snd,
        m256i c0,
@@ -146,13 +146,13 @@ hash33(m256i fst,
     m256i mmeq = _mm256_cmpeq_epi8(c16, mstr);
     m256i sfeq = _mm256_cmpeq_epi8(c32, snd);
 
-    int ffm = _mm256_movemask_epi8(ffeq);
-    int fsm = _mm256_movemask_epi8(fseq) >> 1;
-    int ssm = _mm256_movemask_epi8(sseq) << 31;
-    int fqm = _mm256_movemask_epi8(fqeq) >> 3;
-    int sqm = _mm256_movemask_epi8(sqeq) << 29;
-    int mfm = _mm256_movemask_epi8(mmeq);
-    int sfm = _mm256_movemask_epi8(sfeq);
+    int64_t ffm = _mm256_movemask_epi8(ffeq);
+    int64_t fsm = _mm256_movemask_epi8(fseq) >> 1;
+    int64_t ssm = _mm256_movemask_epi8(sseq) << 31;
+    int64_t fqm = _mm256_movemask_epi8(fqeq) >> 3;
+    int64_t sqm = _mm256_movemask_epi8(sqeq) << 29;
+    int64_t mfm = _mm256_movemask_epi8(mmeq);
+    int64_t sfm = _mm256_movemask_epi8(sfeq);
 
     return ffm & (fsm | ssm) & (fqm | sqm) & mfm & sfm;
 }
@@ -183,7 +183,7 @@ strstrnz3(const char *str, size_t n, const char *sstr, size_t sn) {
     m256i s;
     const char *b;
     const char *e;
-    int hash;
+    int64_t hash;
 
     if (n < 32) {
         f = load_small(str, n);
@@ -266,7 +266,6 @@ strstrnz3(const char *str, size_t n, const char *sstr, size_t sn) {
     }
     return NULL;
 }
-
 
 INTER const char *
 strstrnz4(const char *str, size_t n, const char *sstr, size_t sn) {
@@ -281,7 +280,7 @@ strstrnz4(const char *str, size_t n, const char *sstr, size_t sn) {
     m256i s;
     const char *b;
     const char *e;
-    int hash;
+    int64_t hash;
 
     if (n < 32) {
         f = load_small(str, n);
@@ -364,7 +363,6 @@ strstrnz4(const char *str, size_t n, const char *sstr, size_t sn) {
     }
     return NULL;
 }
-
 
 INTER const char *
 strstrnz2(const char *str, size_t n, const char *sstr, size_t sn) {
@@ -378,7 +376,7 @@ strstrnz2(const char *str, size_t n, const char *sstr, size_t sn) {
     m256i s;
     const char *b;
     const char *e;
-    int hash;
+    int64_t hash;
 
     if (n < 32) {
         f = load_small(str, n);
@@ -462,7 +460,6 @@ strstrnz2(const char *str, size_t n, const char *sstr, size_t sn) {
     return NULL;
 }
 
-
 INTER const char *
 strstrnz1(const char *str, size_t n, const char *sstr, size_t sn) {
     if (unlikely(n < sn)) {
@@ -472,7 +469,7 @@ strstrnz1(const char *str, size_t n, const char *sstr, size_t sn) {
     m256i f;
     const char *b;
     const char *e;
-    int hash;
+    int64_t hash;
 
     if (n < 32) {
         f = load_small(str, n);
@@ -540,7 +537,7 @@ strstrnz33(const char *str, size_t n, const char *sstr, size_t sn) {
     m256i s;
     const char *b;
     const char *e;
-    int hash;
+    int64_t hash;
 
     if (n < 64) {
         f = _mm256_lddqu_si256((__m256i *)str);
