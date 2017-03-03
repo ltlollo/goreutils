@@ -20,7 +20,7 @@
 #define INTER static inline
 #endif // INTER
 
-#define align(p) (const char *)((uintptr_t)(p) & (~0x1f))
+#define align(p) (const char *)((uintptr_t)(p) & (~(uintptr_t)(0x1f)))
 #define unlikely(e) (__builtin_expect((e), 0))
 
 typedef __m256i m256i;
