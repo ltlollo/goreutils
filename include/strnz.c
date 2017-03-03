@@ -5,7 +5,7 @@
 //  -fsched-spec-load-dangerous -fschedule-insns -fschedule-insns2
 //  -minline-all-stringops -fsched-stalled-insns=8 -fsched2-use-superblocks
 //  -ffunction-sections -fdata-sections
-// Todo: .test, .utf32(maybe), .neon, .avx, .sse3
+// Todo: make load small and memcmp fast
 // See also: http://0x80.pl/articles/simd-strfind.html (uses different hashing)
 
 #include <immintrin.h>
