@@ -32,9 +32,9 @@ str_equal(struct FStr *f, struct FStr *s) {
 	__m256i ssf = _mm256_lddqu_si256((void *)f); 
 	__m256i sss = _mm256_lddqu_si256((void *)s); 
 	__m256i one = _mm256_set_epi64x(0xff00000000000000, 0, 0, 0);
-	__m256i taintf = _mm256_add_epi8(ssf, one);
+	__m256i taintf = _mm256_or_si256(ssf, one);
 	__m256i diff = _mm256_cmpeq_epi8(taintf, sss);
-	int res = _mm256_movemask_epi8(diff);
+	unsigned res = _mm256_movemask_epi8(diff);
 
 	if (res < 0x7fffffff) {
 		/* most common case, different short strings */
