@@ -40,7 +40,7 @@ str_equal(struct FStr *f, struct FStr *s) {
 		/* most common case, different short strings */
 		return 0;
 	}
-	if (f->sstr[31] == s->sstr[31]) {
+	if (res == 0x7fffffff && f->sstr[31] == s->sstr[31]) {
 		/* second most common case, equal short strings
 		 * also valid for long strings pointing to the same buffer
 		 */
