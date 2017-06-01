@@ -38,11 +38,11 @@ str_equal(struct FStr *f, struct FStr *s) {
 	__m256i diff = _mm256_cmpeq_epi8(taintf, sss);
 	unsigned res = _mm256_movemask_epi8(diff);
 
-	if (res < 0x7fffffff) {
+	if (__builtin_expect(res < 0x7fffffff, 1)) {
 		/* most common case, different short strings */
 		return 0;
 	}
-	if ( res == 0x7fffffff || res == 0xffffffff) {
+	if (__builtin_expect(res == 0x7fffffff || res == 0xffffffff, 1)) {
 		/* second most common case, equal short strings
 		 * also valid for long strings pointing to the same buffer
 		 */
@@ -133,14 +133,14 @@ str_pop(struct FStr *s) {
 }
 
 int
-str_init(struct Fstr *s, char *raw) {
+str_init(struct FStr *s, char *raw) {
 	size_t size;
 	char *buf;
 	__m256i ls;
 
 	memset(s, 0, sizeof(*s));
 	size = strlen(raw);
-	if (len < 32) {
+	if (size < 32) {
 		memcpy(s, raw, size);
 	} else {
 		size++;
