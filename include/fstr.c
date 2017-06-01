@@ -40,16 +40,19 @@ str_equal(struct FStr *f, struct FStr *s) {
 		/* most common case, different short strings */
 		return 0;
 	}
-	if (res == 0x7fffffff && f->sstr[31] == s->sstr[31]) {
+	if ( res == 0x7fffffff || res == 0xffffffff) {
 		/* second most common case, equal short strings
 		 * also valid for long strings pointing to the same buffer
 		 */
 		return 1;
 	}
-	if (f->size != s->size) {
-		return 0;
+	if (/* res > 0x7fffffff */
+		__builtin_expect(f->sstr[31] == (char)0xff && f->size == s->size, 0)) {
+		/* third case, long strings of the same lenght */
+		return memcmp(f->lstr, s->lstr, f->size) == 0;
 	}
-	return memcmp(f->lstr, s->lstr, f->size) == 0;
+	/* last case, long string of different lenght, or short vs long*/
+	return 0;
 }
 
 size_t
@@ -92,7 +95,7 @@ str_push(struct FStr *s, char c) {
 		buf[size] = c;
 		buf[size + 1] = '\0';
 		size++;
-		ls = _mm256_set_epi64x(0xffffffffffffffff, (int64_t)buf, alloc, size);
+		ls = _mm256_set_epi64x(0xff00ff00ffffffff, (int64_t)buf, alloc, size);
 		_mm256_storeu_si256((void *)s, ls);
 		return 1;
 	} else {
@@ -103,7 +106,7 @@ str_push(struct FStr *s, char c) {
 		_mm256_storeu_si256((void *)buf, sf);
 		buf[31] = c;
 		buf[32] = '\0';
-		ls = _mm256_set_epi64x(0xffffffffffffffff, (int64_t)buf, 64, 32);
+		ls = _mm256_set_epi64x(0xff00ff00ffffffff, (int64_t)buf, 64, 32);
 		_mm256_storeu_si256((void *)s, ls);
 		return 1;
 	}
