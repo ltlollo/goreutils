@@ -2,11 +2,13 @@
 #include <memory.h>
 #include <assert.h>
 
-/* Description: a string implementation build for fast equality comparisons.
+/* Description: a string implementation build for fast equality comparison.
  * The string is written to include a short variant, made to fit a cache line.
- * The string is considered short when the 31st byte is 0.
- * In order for the equality comparison to work the ramining bytes of the
- * string must be kept 0.
+ * The string is considered short when the 31st byte is 0 and stored on size,
+ * otherwise it's hoisted on the heap and the string is filled with
+ * { string size, allocation size, indirect pointer, 0xff00ff00ffffffff }
+ * In order for the equality comparison to work the remaining bytes of the
+ * short variant must be kept 0.
  * Motivation: in normal real world circumstances:
  * strings representing lines are < 32 bytes with p = 0.75,
  * strings representing words are < 32 bytes with p = 0.99,
@@ -80,35 +82,35 @@ str_push(struct FStr *s, char c) {
 
 	if (__builtin_expect(size < 31, 1)) {
 		s->sstr[size] = c;
-		return 1;
+		return 0;
 	} else if (__builtin_expect(size > 31, 1)) {
 		if (size + 1 < s->alloc) {
 			s->lstr[size] = c;
 			s->size++;
-			return 1;
+			return 0;
 		}
 		alloc = s->alloc + s->alloc / 2;
 		buf = realloc(s->lstr, alloc * sizeof(*s->lstr));
 		if (__builtin_expect(buf == NULL, 0)) {
-			return 0;
+			return -1;
 		}
 		buf[size] = c;
 		buf[size + 1] = '\0';
 		size++;
 		ls = _mm256_set_epi64x(0xff00ff00ffffffff, (int64_t)buf, alloc, size);
 		_mm256_storeu_si256((void *)s, ls);
-		return 1;
+		return 0;
 	} else {
 		buf = malloc(64 * sizeof(*s->lstr));
 		if (__builtin_expect(buf == NULL, 0)) {
-			return 0;
+			return -1;
 		}
 		_mm256_storeu_si256((void *)buf, sf);
 		buf[31] = c;
 		buf[32] = '\0';
 		ls = _mm256_set_epi64x(0xff00ff00ffffffff, (int64_t)buf, 64, 32);
 		_mm256_storeu_si256((void *)s, ls);
-		return 1;
+		return 0;
 	}
 }
 
@@ -128,6 +130,29 @@ str_pop(struct FStr *s) {
 		free(s->lstr);
 		_mm256_storeu_si256((void *)s, sf);
 	}
+}
+
+int
+str_init(struct Fstr *s, char *raw) {
+	size_t size;
+	char *buf;
+	__m256i ls;
+
+	memset(s, 0, sizeof(*s));
+	size = strlen(raw);
+	if (len < 32) {
+		memcpy(s, raw, size);
+	} else {
+		size++;
+		buf = malloc(size * sizeof(*raw));
+		if (buf == NULL) {
+			return -1;
+		}
+		memcpy(buf, raw, size);
+		ls = _mm256_set_epi64x(0xff00ff00ffffffff, (int64_t)buf, size, size);
+		_mm256_storeu_si256((void *)s, ls);
+	}
+	return 0;
 }
 
 void
